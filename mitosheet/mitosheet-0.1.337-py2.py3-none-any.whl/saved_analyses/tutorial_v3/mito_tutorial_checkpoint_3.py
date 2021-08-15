@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# Copyright (c) Mito.
+# Distributed under the terms of the Modified BSD License.
+
+"""
+Contains an analysis with the merge steps for tutorial v3
+"""
+
+MITO_TUTORIAL_CHECKPOINT_3 = {
+    'name': 'checkpoint3',
+    'saved_analysis': {
+        "version": "0.1.96",
+        "steps": {
+            "1": {
+                "step_version": 1,
+                "step_type": "simple_import",
+                "file_names": [
+                    "AMTRAK-Stations-2010.csv",
+                    "Zipcode-Data-2010.csv"
+                ]
+            },
+            "2": {
+                "step_version": 1,
+                "step_type": "merge",
+                "sheet_index_one": 0,
+                "merge_key_one": "Zip",
+                "selected_columns_one": [
+                    "State",
+                    "Checked_Bags",
+                    "Zip"
+                ],
+                "sheet_index_two": 1,
+                "merge_key_two": "Zip",
+                "selected_columns_two": [
+                    "Median_Income",
+                    "Zip"
+                ]
+            }
+        }
+    }
+}
+
+
+
