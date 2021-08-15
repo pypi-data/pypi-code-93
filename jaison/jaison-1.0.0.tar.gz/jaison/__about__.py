@@ -1,0 +1,10 @@
+__title__ = 'jaison'
+__package_name__ = 'jaison'
+__version__ = '1.0.0'
+__description__ = "jaison is a toolkit for automatic machine learning model building"
+__email__ = "community@mindsdb.com"
+__author__ = 'MindsDB Inc'
+__github__ = 'https://github.com/mindsdb/jaison'
+__pypi__ = 'https://pypi.org/project/jaison'
+__license__ = 'GPL-3.0'
+__copyright__ = 'Copyright 2019- mindsdb'
