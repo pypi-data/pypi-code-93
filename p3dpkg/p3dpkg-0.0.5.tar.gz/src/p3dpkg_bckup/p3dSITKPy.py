@@ -1,0 +1,556 @@
+import argparse
+import SimpleITK as sitk
+import os
+import tempfile
+
+
+import p3dpkg.p3d_SITK_common_lib
+from p3dpkg.p3d_SITK_common_lib import *
+
+import p3dpkg.p3d_SITK_read_raw
+from p3dpkg.p3d_SITK_read_raw import *
+
+import p3dpkg.p3dFiltPy
+from p3dpkg.p3dFiltPy import py_p3dReadRaw8,py_p3dWriteRaw8,py_p3dReadRaw16,py_p3dWriteRaw16
+
+
+"""
+
+import p3d_SITK_common_lib
+
+import p3d_SITK_read_raw
+from p3d_SITK_read_raw import *
+
+import p3dFiltPy
+from p3dFiltPy import py_p3dReadRaw8,py_p3dWriteRaw8,py_p3dReadRaw16,py_p3dWriteRaw16
+
+"""
+########################################## Filters ##########################################
+###### median filter
+#def sitk_Median(img, dimx,dimy,dimz, kWidth = 1):
+#    img = p3d_to_sitk_file_format(img, dimx,dimy,dimz)
+#    median_filter = sitk.MedianImageFilter()
+#    median_filter.SetRadius(kWidth)
+#    outImg = median_filter.Execute(img)   
+#    outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+#    return outImg
+
+###### Binary Dilation
+def py_p3d_Dilate(input_image, dimx, dimy, dimz, kWidth = 3):
+	"""
+|
+| Dilation is one of the two basic operators in the area of mathematical morphology. The basic effect of the operator on a |binary image is to gradually enlarge the boundaries of regions of foreground voxels. Thus areas of foreground voxels grow in |size while holes within those regions become smaller.
+| 
+| Syntax:
+| ------
+| Result = py_p3d_sitk_Dilate ( input_image, dimx, dimy, dimz [, kWidth =value ])
+| 
+| Return Value:
+| ------------
+| Returns a dilated image with the same dimensions and type of input imaged.                  
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+| 
+| kWidth: An odd integer value in the range [3, 51] (default: 3) representing the diameter of the spherical (or circular in case |of 2D input) structuring element.
+|
+| Remarks:
+| -------
+| Often a 3x3x3 structuring element (or a 3x3 for 2D images) is used, although larger kernels (e.g. a 5x5x5 element) can be used |for more severe dilation. Note that a small kernel can be applied more than once in order to produce a similar but not |identical effect as a single pass with a large kernel.
+|
+	"""
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	dilation_filter = sitk.BinaryDilateImageFilter()
+	dilation_filter.SetKernelRadius(kWidth)
+	dilation_filter.SetForegroundValue (255)
+    
+	outImg = dilation_filter.Execute(input_image)    
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### Binary Erosion
+def py_p3d_Erode(img, dimx,dimy,dimz, kWidth = 1):
+	"""
+|
+| Erosion is one of the two basic operators in the area of mathematical morphology. The basic effect of the operator on a binary |image is to erode away the boundaries of regions of foreground voxels. Thus areas of foreground voxels shrink in size, and |holes within those areas become larger.
+| 
+| Syntax:
+| ------
+| Result = py_p3d_sitk_Erode ( input_image, dimx, dimy, dimz [, kWidth =value ])
+| 
+| Return Value:
+| ------------
+| Returns a dilated image with the same dimensions and type of input imaged.                  
+| 
+| Arguments:
+| ---------
+| input_image: A 2D or 3D matrix of type BYTE representing the binary input image to filter.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+| 
+| kWidth: An odd integer value in the range [3, 51] (default: 3) representing the diameter of the spherical (or circular in case |of 2D input) structuring element.
+|
+| Remarks:
+| -------
+| Often a 3x3x3 structuring element (or a 3x3 for 2D images) is used, although larger kernels (e.g. a 5x5x5 element) can be used |for more severe erosion. Note that a small kernel can be applied more than once in order to produce a similar but not |identical effect as a single pass with a large kernel.
+|
+	"""   
+	input_image = p3d_to_sitk_file_format(input_image, dimx, dimy, dimz)
+	erosion_filter = sitk.BinaryErodeImageFilter()
+	erosion_filter.SetKernelRadius(kWidth)
+	erosion_filter.SetForegroundValue (255)
+    
+	outImg = erosion_filter.Execute(input_image)   
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### HMinimaImageFilter
+def py_p3d_HMinimaFilter(img, dimx,dimy,dimz, threshold = 3): 
+	"""
+|
+| Perform H-minima transform of input image, i.e. all minima in input image whose depth is less than the specified threshold are |suppressed [1].
+|
+|H-minima transformation is a mere application of the concept of morphological reconstruction [2]. By performing the |morphological reconstruction (see p3dMorphologicalReconstruction) using the input image as the mask image and the result of |subtraction of the threshold value from the input image as the marker image the H-maxima transform is performed. The H-minima |transformed image can be simply obtained by complementing both input and output image of the process. 
+| 
+| Syntax:
+| ------
+| Result = py_p3d_HMinimaFilter ( input_image, dimx, dimy, dimz [, threshold =value ])
+| 
+| Return Value:
+| ------------
+| Returns the H-minima transformed image with the same dimensions and type of input image.                 
+| 
+| Arguments:
+| ---------
+| input_image: A 2D or 3D matrix of type BYTE representing the input image to dilate.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+| 
+| threshold: An odd integer value in the range [3, 51] (default: 3) representing the diameter of the spherical (or circular in case of 2D input) structuring element.
+|
+| References
+| ----------
+|
+|[1] P. Soille, Morphological Image Analysis: Principles and Applications, Springer-Verlag, 1999, pp. 170-171.
+|
+|[2] L. Vincent, Morphological Grayscale Reconstruction in Image Analysis: Applications and Efficient Algorithms, IEEE |Transactions on Image Processing, Vol. 2, No. 2, pp. 176-201, 1993.
+|
+	"""    
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.HMinimaImageFilter()  
+	Filter.SetHeight(threshold)
+    
+	outImg = Filter.Execute(input_image)
+	outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### Mutli Thresholding
+def py_p3d_MultiThresholding(input_image, dimx, dimy, dimz, regionsNum = 2): 
+	"""
+|
+| Performs multithresholding,
+| 
+| Syntax:
+| ------
+| Result = py_p3d_MultiThresholding ( input_image, dimx, dimy, dimz [, regionsNum =value ])
+| 
+| Return Value:
+| ------------
+| Returns segmented image with the same dimensions and type of input image.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+| 
+| regionsNum: A number representing segments number.
+|
+	"""    
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	thresholdFilter = sitk.OtsuMultipleThresholdsImageFilter()
+	thresholdFilter.SetNumberOfThresholds(regionsNum)
+	outImg = thresholdFilter.Execute(input_image)
+    
+	rescaler = sitk.RescaleIntensityImageFilter()
+	rescaler.SetOutputMinimum(0)
+	rescaler.SetOutputMaximum(255)
+    
+	outImg = rescaler.Execute(outImg)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### GradientMagnitudeImageFilter
+def py_p3d_GradientMagnitudeImageFilter(input_image, dimx,dimy,dimz): 
+	"""
+|
+| Performs multithresholding,
+| 
+| Syntax:
+| ------
+| Result = py_p3d_MultiThresholding ( input_image, dimx, dimy, dimz [, regionsNum =value ])
+| 
+| Return Value:
+| ------------
+| Returns segmented image with the same dimensions and type of input image.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+| 
+| regionsNum: A number representing segments number.
+|
+	"""
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.GradientMagnitudeImageFilter()  
+ 
+	outImg = Filter.Execute(input_image)    
+	outImg =  apply_rescaler(outImg, dimx,dimy,dimz)   
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+    
+	return outImg
+
+
+###### CurvatureFlowImageFilter
+def py_p3d_CurvatureFlowImageFilter(input_image, dimx,dimy,dimz, iterations=1): 
+	"""
+|
+| The sitk::CurvatureFlowImageFilter performs edge-preserving smoothing in a similar fashion to the classical anisotropic |diffusion.
+|
+| The filter uses a level set formulation where the iso-intensity contours in a image are viewed as level sets, where pixels of |a  particular intensity form one level set. The level set function is then evolved under the control of a diffusion equation |where the speed is proportional to the curvature of the contour. Areas of high curvature will diffuse faster than areas of low |curvature. Hence, small jagged noise artifacts will disappear quickly, while large scale interfaces will be slow to evolve, |thereby preserving sharp boundaries between objects. However, it should be noted that although the evolution at the boundary is |slow, some diffusion still occur.
+| 
+| Syntax:
+| ------
+| Result = py_p3d_CurvatureFlowImageFilter ( input_image, dimx, dimy, dimz [, iterations =value ])
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+| 
+| iterations: A decimal value greater than 0 (default: 3.0) representing the standard deviation of the domain gaussian.
+|
+	"""
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.CurvatureFlowImageFilter()  
+	Filter.SetNumberOfIterations(ITERATIONS)
+    
+	outImg = Filter.Execute(input_image)
+	outImg =  apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+
+###### IsolatedConnectedImageFilter 
+def py_p3d_IsolatedConnectedImageFilter (input_image, dimx, dimy, dimz): 
+	"""
+|
+| Pore3D python wrapper for sitk.IsolatedConnectedImageFilter()  
+|
+| Syntax:
+| ------
+| Result = py_p3d_IsolatedConnectedImageFilter ( input_image, dimx, dimy, dimz )
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+	"""   
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.IsolatedConnectedImageFilter()  
+    
+	outImg = Filter.Execute(input_image)
+	outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### NeighborhoodConnectedImageFilter
+def py_p3d_NeighborhoodConnectedImageFilter(input_image, dimx,dimy,dimz): 
+	"""
+|
+| Pore3D python wrapper for sitk.NeighborhoodConnectedImageFilter()  
+|
+| Syntax:
+| ------
+| Result = py_p3d_NeighborhoodConnectedImageFilter ( input_image, dimx, dimy, dimz )
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+	"""     
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.NeighborhoodConnectedImageFilter()  
+    
+	outImg = Filter.Execute(input_image)
+	outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### ConnectedThresholdImageFilter
+def py_p3d_ConnectedThresholdImageFilter(input_image, dimx,dimy,dimz): 
+	"""
+|
+| Pore3D python wrapper for sitk.ConnectedThresholdImageFilter()  
+|
+| Syntax:
+| ------
+| Result = py_p3d_ConnectedThresholdImageFilter ( input_image, dimx, dimy, dimz )
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+	"""       
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.ConnectedThresholdImageFilter()  
+    
+	outImg = Filter.Execute(input_image)
+	outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+###### sitk_WatershedSegmentation_8
+def py_p3d_WatershedSegmentation(input_image, dimx, dimy, dimz, level = 0, markWatershedLine = False, connected = False): 
+	"""
+|
+| Pore3D python wrapper for sitk.MorphologicalWatershedImageFilter()  
+|
+| Syntax:
+| ------
+| Result = py_p3d_WatershedSegmentation ( input_image, dimx, dimy, dimz [, level = value] [, markWatershedLine = bool] [, |connected = bool])
+| 
+| Return Value:
+| ------------
+| Returns a segmented image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+| level:
+| 
+| markWatershedLine:
+|
+| connected:
+|
+	"""           
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.MorphologicalWatershedImageFilter() 
+	Filter.SetFullyConnected(connected)
+	Filter.SetLevel(level)
+	Filter.SetMarkWatershedLine(markWatershedLine)
+    
+	outImg = Filter.Execute(input_image)
+	outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+
+###### k means
+def py_p3d_KMeansClustering(input_image, dimx, dimy, dimz): 
+	"""
+|
+| Performs K-means clustering multiphase segmentation.
+|
+|Classification includes a broad range of decision-theoretic approaches to the identification of images (or parts thereof). All |classification algorithms are based on the assumption that the image in question depicts one or more features and that each of |these features belongs to one of several distinct and exclusive classes. The classes may be specified a priori by the user (as |in supervised classification) or automatically clustered (as in unsupervised classification) into sets of prototype classes, |where the user merely specifies the number of desired categories. Within image processing context, classification should be |thought as a multiphase segmentation process: in fact the classes are then used for generating a labeled image in which every |voxel is assigned to one of the classes.
+|
+|The K-means algorithm converts an input image into vectors of equal size and then determines the k prototype mean vectors by |minimizing of the sum of the squared distances from all points in a class to the class center.
+|  
+| Syntax:
+| ------
+| Result = py_p3d_KMeansClustering ( input_image, dimx, dimy, dimz)
+| 
+| Return Value:
+| ------------
+| Returns a segmented image of type BYTE with the same dimensions of input image.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+	"""   
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	#feature_img = sitk.GradientMagnitude(img)
+	KmeansImageFilter = sitk.ScalarImageKmeansImageFilter ()  
+	#KmeansImageFilter.SetClassWithInitialMean(initialMean)
+	outImg = KmeansImageFilter.Execute(input_image)
+	outImg =  apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+
+###### CurvatureAnisotropicDiffusionImageFilter (16 bit only)
+def py_p3d_CurvatureAnisotropicDiffusionImageFilter(input_image, dimx, dimy, dimz, conductance=7.0, iterations=1): 
+	"""
+|
+|Performs anisotropic diffusion on an image using a modified curvature diffusion equation (MCDE).
+|
+|Qualitatively, MCDE compares well with other non-linear diffusion techniques. It is less sensitive to contrast than classic |anisotropic diffusion and preserves finer detailed structures in images. Each iteration of the filter requires more |computational time than the classic anisotropic diffusion, however. fewer iterations may be required to reach an acceptable |solution. 
+|
+| Syntax:
+| ------
+| Result = py_p3d_CurvatureAnisotropicDiffusionImageFilter ( input_image, dimx, dimy, dimz [, conductance = value ] [, |iterations = value ])
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+| conductance: A decimal value greater than 0 (default: 3.0) representing the standard deviation of the domain gaussian.
+|
+| iterations: An integer value greater than 0 (default: 3.0) representing the the diffusion time, i.e. the number of times the |algorithm is iterated.
+|
+	"""       
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	#feature_img = sitk.GradientMagnitude(img)
+	Filter = sitk.CurvatureAnisotropicDiffusionImageFilter()  
+	Filter.SetNumberOfIterations(ITERATIONS)
+	Filter.SetConductanceParameter (CONDUCTANCE)
+
+	outImg = Filter.Execute(input_image)    
+	outImg =  apply_rescaler(outImg, dimx,dimy,dimz)   
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+    
+	return outImg
+
+###### GradientAnisotropicDiffusionImageFilter(16 bit only)
+def py_p3d_GradientAnisotropicDiffusionImageFilter(input_image, dimx, dimy, dimz, conductance = 7.0, iterations = 1): 
+	"""
+|
+| Pore3D python wrapper for sitk.GradientAnisotropicDiffusionImageFilter
+|
+| Syntax:
+| ------
+| Result = py_p3d_GradientAnisotropicDiffusionImageFilter ( input_image, dimx, dimy, dimz [, conductance = value ] [, iterations | = value] )
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+| conductance: A decimal value greater than 0 (default: 3.0) representing the standard deviation of the domain gaussian.
+|
+| iterations: An integer value greater than 0 (default: 3.0) representing the the diffusion time, i.e. the number of times the |algorithm is iterated.
+|
+	"""     
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.GradientAnisotropicDiffusionImageFilter()  
+	Filter.SetNumberOfIterations(iterations)
+	Filter.SetConductanceParameter (conductance)
+    
+	outImg = Filter.Execute(input_image)
+	outImg =  apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+
+###### MinMaxCurvatureFlowImageFilter (16 bit only)
+def py_p3d_MinMaxCurvatureFlowImageFilter(input_image, dimx, dimy, dimz, iterations = 3, width = 3): 
+	"""
+|
+| The sitk::CurvatureFlowImageFilter performs edge-preserving smoothing applying a variant of the curvature flow algorithm where |diffusion is turned on or off depending on the scale of the noise.
+|
+|The minimum-maximum variant of the curvature flow filter results in sharper edges than the application with the simple |curvature flow with similar parametrization.
+|
+| Syntax:
+| ------
+| Result = py_p3d_MinMaxCurvatureFlowImageFilter ( input_image, dimx, dimy, dimz [, iterations = value ] [, width = value] )
+| 
+| Return Value:
+| ------------
+| Returns a filtered image with the same dimensions and type of input imaged.                 
+| 
+| Arguments:
+| ---------
+| input_image: A string with the filename with full path included.
+|
+| dimx,dimy,dimz: three variables representing the dimensions of image to read. 
+|
+| iterations: A decimal value greater than 0 (default: 3.0) representing the standard deviation of the domain gaussian.
+|
+| width: A decimal value greater than 0 (default: 3.0) representing the standard deviation of the domain gaussian.
+|
+	"""      
+	input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+	Filter = sitk.MinMaxCurvatureFlowImageFilter()  
+	Filter.SetNumberOfIterations(iterations)
+	Filter.SetStencilRadius(width)
+    
+	outImg = Filter.Execute(input_image)
+	outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+	outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+	return outImg
+
+##### MinMaxCurvatureFlowImageFilter (16 bit only)
+#def py_p3d_MinMaxCurvatureFlowImageFilter_16(input_image, dimx,dimy,dimz, ITERATIONS=3, WIDTH = 3): 
+#    
+#    input_image = p3d_to_sitk_file_format(input_image, dimx,dimy,dimz)
+#    Filter = sitk.MinMaxCurvatureFlowImageFilter()  
+#    Filter.SetNumberOfIterations(ITERATIONS)
+#    Filter.SetStencilRadius(WIDTH)
+#    
+#    outImg = Filter.Execute(input_image)
+#    outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+#    outImg = sitk_to_p3d_file_format (outImg, dimx,dimy,dimz)
+#    return outImg
+
+###### sitk_WatershedSegmentation_16
+def py_p3d_WatershedSegmentation_16(input_image, dimx, dimy, dimz, level = 0, markWatershedLine = False, connected = False): 
+    
+	input_image =  p3d_to_sitk_file_format_16(input_image, dimx,dimy,dimz)#Read_Raw16('data_samples/output/FL1_distance_field.raw', [dimx,dimy,dimz]) #
+	Filter = sitk.MorphologicalWatershedImageFilter() 
+	Filter.SetFullyConnected(connected)
+	Filter.SetLevel(level)
+	Filter.SetMarkWatershedLine(markWatershedLine)
+        
+	outImg = Filter.Execute(input_image)
+    #outImg = apply_rescaler(outImg, dimx,dimy,dimz)
+    #outImg = sitk_to_p3d_file_format_16(outImg, dimx,dimy,dimz)
+	return outImg
+
+
+#FUNCTION        P3DCONFIDENCEREGIONGROWING				1       1   KEYWORD#S
