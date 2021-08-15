@@ -1,0 +1,1 @@
+GITLAB_BASE_URL_V4_DEFAULT = "https://gitlab.com/api/v4"
