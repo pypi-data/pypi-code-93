@@ -1,0 +1,16 @@
+from typing import Dict, List, Union
+
+JSONSingle = Union[bool, int, float, str, None]
+_JSc1 = Union[JSONSingle, List[JSONSingle], Dict[str, JSONSingle]]
+_JSc2 = Union[JSONSingle, List[_JSc1], Dict[str, _JSc1]]
+_JSc3 = Union[JSONSingle, List[_JSc2], Dict[str, _JSc2]]
+_JSc4 = Union[JSONSingle, List[_JSc3], Dict[str, _JSc3]]
+_JSc5 = Union[JSONSingle, List[_JSc4], Dict[str, _JSc4]]
+_JSc6 = Union[JSONSingle, List[_JSc5], Dict[str, _JSc5]]
+_JSc7 = Union[JSONSingle, List[_JSc6], Dict[str, _JSc6]]
+_JSc8 = Union[JSONSingle, List[_JSc7], Dict[str, _JSc7]]
+_JSc9 = Union[JSONSingle, List[_JSc8], Dict[str, _JSc8]]
+JSONArray = List[_JSc9]
+JSONObject = Dict[str, _JSc9]
+JSONCompatible = Union[JSONSingle, JSONArray, JSONObject]
+JSONSchema = Dict[str, JSONCompatible]
