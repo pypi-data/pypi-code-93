@@ -1,0 +1,1 @@
+from emsal import main
