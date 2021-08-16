@@ -1,0 +1,2 @@
+class StateServiceException(Exception):
+    pass
