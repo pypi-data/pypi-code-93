@@ -1,0 +1,1 @@
+{"package_dir": "/mnt/c/Users/gabal/Desktop/Side Projects/multiSourceWordMap", "sources": {}}
