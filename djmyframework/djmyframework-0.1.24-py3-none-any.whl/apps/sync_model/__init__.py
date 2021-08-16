@@ -1,0 +1,1 @@
+default_app_config = 'sync_model.apps.SyncModelConfig'
