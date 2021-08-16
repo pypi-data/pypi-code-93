@@ -1,0 +1,4 @@
+
+
+class RequiredValue(KeyError):
+    pass
