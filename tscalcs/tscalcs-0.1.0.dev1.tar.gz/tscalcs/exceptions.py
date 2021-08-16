@@ -1,0 +1,3 @@
+class VariableException(Exception):
+
+    pass
