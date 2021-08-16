@@ -1,0 +1,1 @@
+from pjt.translator import Translator
