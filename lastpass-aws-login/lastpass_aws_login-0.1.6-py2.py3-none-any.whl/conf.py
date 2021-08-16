@@ -1,0 +1,141 @@
+from os import getenv
+from os.path import expanduser, join
+import sys
+import argparse
+import json
+import logging
+
+try:
+    # For Python 3.5 and later
+    import configparser
+except ImportError:
+    # Fall back to Python 2
+    import ConfigParser as configparser  # noqa: F401
+
+
+CALLBACK_SERVER_TIMEOUT = 30
+
+
+def init():
+    aws_config = configparser.ConfigParser()
+    home = expanduser("~")
+    aws_config.read(join(home, ".aws", "config"))
+    try:
+        my_conf = Config(_parse_args(), aws_config)
+    except ConfigExeption as ex:
+        print(ex)
+        sys.exit(1)
+
+    return my_conf
+
+
+def _fail_message(missing_config, profile):
+    return "No value for required configuration parameter {} in profile {}.".format(
+        missing_config, profile
+    )
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="AWS LastPass Login")
+    parser.add_argument(
+        "-p",
+        "--profile",
+        type=str,
+        nargs="?",
+        default=getenv("AWS_PROFILE", "default"),
+        help="AWS profile name to log in with",
+    )
+    parser.add_argument(
+        "-u",
+        "--user",
+        type=str,
+        nargs="?",
+        default=getenv("LASTPASS_USER", ""),
+        help="Username to log in with",
+    )
+    parser.add_argument(
+        "-i",
+        "--saml-id",
+        type=str,
+        nargs="?",
+        default=getenv("LASTPASS_SAML_ID", ""),
+        help="The lastpass id for the SAML configuration",
+    )
+    parser.add_argument(
+        "-n",
+        "--no-prompt",
+        action="store_true",
+        help="Do not prompt for username and AWS role (need to be set in config in this case)",
+    )
+    parser.add_argument(
+        "-d",
+        "--duration",
+        type=int,
+        help="Duration of the session in hours. Defaults to 1.",
+    )
+    parser.add_argument("-r", "--role", help="The AWS IAM role ARN to assume")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
+    return parser.parse_args()
+
+
+class ConfigExeption(Exception):
+    pass
+
+
+class Config:
+    def __init__(self, args, aws_config):
+        self.VERBOSE = args.verbose
+        self.PROFILE = args.profile
+        self.DEFAULT_USERNAME = args.user
+        self.CONFIG_PROFILE = args.profile
+        self.NO_PROMPT = args.no_prompt
+        self.ROLE_ARN = args.role
+        self.SAML_ID = args.saml_id
+        if args.duration:
+            self.DURATION = args.duration * 3600
+        else:
+            self.DURATION = None
+        if self.CONFIG_PROFILE != "default":
+            self.CONFIG_PROFILE = "profile {}".format(self.PROFILE)
+        if not aws_config.has_section(self.CONFIG_PROFILE):
+            raise ConfigExeption(
+                "Couldn't find configuration for profile: {}".format(self.PROFILE)
+            )
+
+        default_section = config_section = aws_config[self.CONFIG_PROFILE]
+        if aws_config.has_section("default"):
+            default_section = aws_config["default"]
+        if not self.ROLE_ARN:
+            self.ROLE_ARN = config_section.get("lastpass_role_arn", default_section.get("lastpass_role_arn", ""))
+        if not self.DEFAULT_USERNAME:
+            self.DEFAULT_USERNAME = config_section.get("lastpass_default_username", default_section.get("lastpass_default_username", ""))
+        if not self.DURATION:
+            conf_duration = config_section.get("lastpass_session_duration", default_section.get("lastpass_session_duration", ""))
+            if conf_duration.isdigit():
+                self.DURATION = int(conf_duration) * 3600
+        if not self.DURATION:
+            self.DURATION = 3600
+        if not self.SAML_ID:
+            self.SAML_ID = config_section.get("lastpass_saml_id", default_section.get("lastpass_saml_id", ""))
+            if not self.SAML_ID:
+                raise ConfigExeption(
+                    "Couldn't find SAML configuration id for profile: {}".format(self.PROFILE)
+                )
+            
+    def __str__(self):
+        return json.dumps(
+            {
+                "profile": self.PROFILE,
+                "username": self.DEFAULT_USERNAME,
+                "profile": self.PROFILE,
+                "conf_profile": self.CONFIG_PROFILE,
+                "no-prompt": self.NO_PROMPT,
+                "role-arn": self.ROLE_ARN,
+                "saml-id": self.SAML_ID,
+            },
+            indent=2,
+        )
+
+
+if __name__ == "__main__":
+    init()
