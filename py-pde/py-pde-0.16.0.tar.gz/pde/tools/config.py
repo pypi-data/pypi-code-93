@@ -1,0 +1,203 @@
+"""
+Handles configuration variables of the package
+
+.. codeauthor:: David Zwicker <david.zwicker@ds.mpg.de>
+"""
+
+import collections
+import importlib
+import sys
+from typing import Any, Dict, List, Union  # @UnusedImport
+
+from .misc import module_available
+from .parameters import Parameter
+
+
+class ParameterModuleConstant:
+    """special parameter class to access module constants as configuration values"""
+
+    def __init__(
+        self, name: str, module_path: str, variable: str, description: str = ""
+    ):
+        """
+        Args:
+            name (str): The name of the parameter
+            module_path (str): The path of the module in which the constants is defined
+            variable: The name of the constant
+        """
+        self.name = name
+        self.module_path = module_path
+        self.variable = variable
+        self.description = description
+
+    def get(self):
+        """obtain the value of the constant"""
+        mod = importlib.import_module(self.module_path)
+        return getattr(mod, self.variable)
+
+
+# define default parameter values
+DEFAULT_CONFIG: List[Union[Parameter, ParameterModuleConstant]] = [
+    Parameter(
+        "numba.parallel_threshold",
+        256 ** 2,
+        int,
+        "Minimal number of support points before multithreading or multiprocessing is "
+        "enabled in the numba compilations.",
+    ),
+    # The next items are for backward compatibility with previous mechanisms for
+    # setting parameters using global constants. This fix was introduced on 2021-02-04
+    # and will likely be removed around 2021-09-01.
+    ParameterModuleConstant(
+        "numba.parallel",
+        "pde.tools.numba",
+        "NUMBA_PARALLEL",
+        "Determines whether multiple cores are used in numba-compiled code.",
+    ),
+    ParameterModuleConstant(
+        "numba.fastmath",
+        "pde.tools.numba",
+        "NUMBA_FASTMATH",
+        "Determines whether the fastmath flag is set during compilation. This affects "
+        "the precision of the mathematical calculations.",
+    ),
+    ParameterModuleConstant(
+        "numba.debug",
+        "pde.tools.numba",
+        "NUMBA_DEBUG",
+        "Determines whether numba used the debug mode for compilation. If enabled, "
+        "this emits extra information that might be useful for debugging.",
+    ),
+]
+
+
+class Config(collections.UserDict):
+    """class handling the package configuration"""
+
+    def __init__(self, items: Dict[str, Any] = None, mode: str = "update"):
+        """
+        Args:
+            items (dict, optional):
+                Configuration values that should be added or overwritten to initialize
+                the configuration.
+            mode (str):
+                Defines the mode in which the configuration is used. Possible values are
+
+                * `insert`: any new configuration key can be inserted
+                * `update`: only the values of pre-existing items can be updated
+                * `locked`: no values can be changed
+
+                Note that the items specified by `items` will always be inserted,
+                independent of the `mode`.
+        """
+        self.mode = "insert"  # temporarily allow inserting items
+        super().__init__({p.name: p for p in DEFAULT_CONFIG})
+        if items:
+            self.update(items)
+        self.mode = mode
+
+    def __getitem__(self, key: str):
+        """retrieve item `key`"""
+        parameter = self.data[key]
+        if isinstance(parameter, Parameter):
+            return parameter.convert()
+        elif isinstance(parameter, ParameterModuleConstant):
+            return parameter.get()
+        else:
+            return parameter
+
+    def __setitem__(self, key: str, value):
+        """update item `key` with `value`"""
+        if self.mode == "insert":
+            self.data[key] = value
+
+        elif self.mode == "update":
+            try:
+                self[key]  # test whether the key already exist (including magic keys)
+            except KeyError:
+                raise KeyError(
+                    f"{key} is not present and config is not in `insert` mode"
+                )
+            self.data[key] = value
+
+        elif self.mode == "locked":
+            raise RuntimeError("Configuration is locked")
+
+        else:
+            raise ValueError(f"Unsupported configuration mode `{self.mode}`")
+
+    def __delitem__(self, key: str):
+        """removes item `key`"""
+        if self.mode == "insert":
+            del self.data[key]
+        else:
+            raise RuntimeError("Configuration is not in `insert` mode")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """convert the configuration to a simple dictionary
+
+        Returns:
+            dict: A representation of the configuration in a normal :class:`dict`.
+        """
+        return {k: v for k, v in self.items()}
+
+    def __repr__(self) -> str:
+        """represent the configuration as a string"""
+        return f"{self.__class__.__name__}({repr(self.to_dict())})"
+
+
+def environment(dict_type=dict) -> Dict[str, Any]:
+    """obtain information about the compute environment
+
+    Args:
+        dict_type:
+            The type to create the returned dictionaries. The default is `dict`, but
+            :class:`collections.OrderedDict` is an alternative.
+
+    Returns:
+        dict: information about the python installation and packages
+    """
+    import matplotlib as mpl
+
+    from .. import __version__ as package_version
+    from .. import config
+    from .numba import numba_environment
+    from .plotting import get_plotting_context
+
+    def get_package_versions(packages: List[str]) -> Dict[str, str]:
+        """tries to load certain python packages and returns their version"""
+        versions: Dict[str, str] = dict_type()
+        for name in sorted(packages):
+            try:
+                module = importlib.import_module(name)
+            except ImportError:
+                versions[name] = "not available"
+            else:
+                versions[name] = module.__version__  # type: ignore
+        return versions
+
+    result: Dict[str, Any] = dict_type()
+    result["package version"] = package_version
+    result["python version"] = sys.version
+    result["platform"] = sys.platform
+
+    # add the package configuration
+    result["config"] = config.to_dict()
+
+    # add details for mandatory packages
+    result["mandatory packages"] = get_package_versions(
+        ["matplotlib", "numba", "numpy", "scipy", "sympy"]
+    )
+    result["matplotlib environment"] = {
+        "backend": mpl.get_backend(),
+        "plotting context": get_plotting_context().__class__.__name__,
+    }
+
+    # add details about optional packages
+    result["optional packages"] = get_package_versions(
+        ["h5py", "napari", "pandas", "pyfftw", "tqdm"]
+    )
+    if module_available("numba"):
+        result["numba environment"] = numba_environment()
+
+    return result
