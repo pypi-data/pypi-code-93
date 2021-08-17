@@ -1,0 +1,3 @@
+
+class PartialEdgeDrawingException(Exception):
+    pass
