@@ -1,0 +1,23 @@
+from sym.sdk import action, hook, reducer
+
+
+@hook
+def simple_hook():
+    return "simple_hook"
+
+
+@reducer
+def simple_reducer():
+    return "simple_reducer"
+
+
+@action
+def simple_action():
+    return "simple_action"
+
+
+class TestReducer:
+    def test_all(self):
+        assert simple_hook() == "simple_hook"
+        assert simple_reducer() == "simple_reducer"
+        assert simple_action() == "simple_action"
