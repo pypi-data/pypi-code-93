@@ -1,0 +1,2 @@
+from suanpan_custom_code.packages.common.auto_sync_inputs import AutoSyncInputs
+from suanpan_custom_code.packages.common.type_convert import cast
