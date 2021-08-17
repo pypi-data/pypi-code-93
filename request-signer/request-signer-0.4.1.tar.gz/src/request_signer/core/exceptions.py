@@ -1,0 +1,2 @@
+class MissingSettings(Exception):
+    pass
