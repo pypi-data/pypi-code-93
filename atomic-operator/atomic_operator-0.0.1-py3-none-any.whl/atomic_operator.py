@@ -1,0 +1,26 @@
+
+
+
+class atomic_operator(object):
+    
+    __class_variable = None
+
+    def __init__(self):
+        pass
+
+    def __private_method(self):
+        pass
+
+    def _hidden_method(self):
+        pass
+
+    def method(self):
+        pass
+
+    @property
+    def prop(self):
+        return self.__prop
+        
+    @prop.setter
+    def prop(self, value):
+        self.__prop = value
