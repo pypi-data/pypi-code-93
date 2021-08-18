@@ -1,0 +1,3 @@
+
+class PoolSerializerFieldConfigurationError(BaseException):
+    pass
