@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# File              : Ampel-interface/ampel/content/JournalRecord.py
+# License           : BSD-3-Clause
+# Author            : vb <vbrinnel@physik.hu-berlin.de>
+# Date              : 12.12.2019
+# Last Modified Date: 22.06.2021
+# Last Modified By  : vb <vbrinnel@physik.hu-berlin.de>
+
+from typing import Sequence, Union, Literal, Any, Dict, TypedDict
+from ampel.types import ChannelId, Tag
+
+
+class JournalRecord(TypedDict, total=False):
+	"""
+	A record of activity on a stock document.
+
+	.. seealso:: :class:`~ampel.struct.JournalAttributes.JournalAttributes`
+	"""
+
+	#: Tier of the associated process
+	tier: Literal[-1, 0, 1, 2, 3]
+
+	#: UNIX epoch of the activity
+	ts: Union[int, float]
+
+	#: Channels associated with the activity
+	channel: Union[ChannelId, Sequence[ChannelId]]
+
+	#: Name of the associated process
+	process: Union[int, str]
+
+	#: Free-form labels
+	tag: Union[Tag, Sequence[Tag]]
+
+	#: Run(s) associated with this record
+	run: int
+
+	#: Status code of the associated process
+	code: int
+
+	#: Duration of the process
+	duration: Union[int, float]
+
+	#: Trace ids
+	traceid: Dict[str, int]
+
+	#: Free-form information
+	extra: Dict[str, Any]
