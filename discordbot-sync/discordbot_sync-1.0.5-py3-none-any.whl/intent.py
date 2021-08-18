@@ -1,0 +1,15 @@
+guilds                    = 0
+guild_members             = 1
+guild_bans                = 2
+guild_emojis              = 3
+guild_integrations        = 4
+guild_webhooks            = 5
+guild_invites             = 6
+guild_voice_states        = 7
+guild_presences           = 8
+guild_messages            = 9
+guild_message_reactions   = 10
+guild_message_typing      = 11
+direct_messages           = 12
+direct_message_reactions  = 13
+direct_message_typing     = 14
