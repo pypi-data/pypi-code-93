@@ -1,0 +1,180 @@
+"""This module provides the FourierDomainExpression class to represent
+f-domain (Fourier domain) expressions.
+
+Copyright 2014--2021 Michael Hayes, UCECE
+
+"""
+
+from __future__ import division
+from .domains import FourierDomain
+from .inverse_fourier import inverse_fourier_transform
+from .inverse_dtft import IDTFT
+from .expr import Expr, expr, expr_make
+from .sym import fsym, ssym, tsym, pi
+from .dsym import nsym, dt
+from .units import u as uu
+from .utils import factor_const
+from sympy import Integral, Expr as symExpr
+
+class FourierDomainExpression(FourierDomain, Expr):
+
+    """Fourier domain expression or symbol."""
+
+    var = fsym
+
+    def __init__(self, val, **assumptions):
+
+        check = assumptions.pop('check', True)        
+        assumptions['real'] = True
+        super(FourierDomainExpression, self).__init__(val, **assumptions)
+
+        expr = self.expr        
+        if check and expr.has(ssym) and not expr.has(Integral):
+            raise ValueError(
+                'f-domain expression %s cannot depend on s' % expr)
+        if check and expr.has(tsym) and not expr.has(Integral):
+            raise ValueError(
+                'f-domain expression %s cannot depend on t' % expr)
+
+    def as_expr(self):
+        return FourierDomainExpression(self)
+
+    def inverse_fourier(self, evaluate=True, **assumptions):
+        """Attempt inverse Fourier transform."""
+
+        result = inverse_fourier_transform(self.expr, self.var, tsym, evaluate=evaluate)
+
+        return self.change(result, 'time', units_scale=uu.Hz, **assumptions)
+
+    def IFT(self, evaluate=True, **assumptions):
+        """Convert to time domain.  This is an alias for inverse_fourier."""
+
+        return self.inverse_fourier(evaluate=evaluate, **assumptions)
+
+    def IDTFT(self, evaluate=True, **assumptions):
+        """Convert to discrete-time domain using inverse discrete-time
+        Fourier transform."""
+
+        result = IDTFT(self.expr, self.var, nsym, evaluate=evaluate)
+
+        return self.change(result, 'discrete time', units_scale=uu.Hz,
+                           **assumptions)
+
+    def time(self, **assumptions):
+        return self.inverse_fourier(**assumptions)
+
+    def norm_fourier(self, **assumptions):
+        """Convert to normalized Fourier domain."""
+        from .symbols import F
+        from .dsym import dt
+        
+        result = self.subs(F / dt)
+        return result
+
+    def angular_fourier(self, **assumptions):
+        """Convert to angular Fourier domain."""
+        from .symbols import omega
+        
+        result = self.subs(omega / (2 * pi))
+        return result
+
+    def norm_angular_fourier(self, **assumptions):
+        """Convert to normalized angular Fourier domain."""
+        from .symbols import Omega
+        from .dsym import dt
+        
+        result = self.subs(Omega / (2 * pi * dt))
+        return result    
+    
+    def laplace(self, **assumptions):
+        """Determine one-side Laplace transform with 0- as the lower limit."""
+
+        result = self.time(**assumptions).laplace()
+        return result
+    
+    def phasor(self, **assumptions):
+        """Convert to phasor domain."""
+
+        return self.time(**assumptions).phasor(**assumptions)        
+
+    def plot(self, fvector=None, plot_type=None, **kwargs):
+        """Plot frequency response at values specified by `fvector`.
+
+        If `fvector` is a tuple, this sets the frequency limits.
+
+        `plot_type` - 'dB-phase', 'dB-phase-degrees', 'mag-phase',
+        'mag-phase-degrees', 'real-imag', 'mag', 'phase',
+        'phase-degrees', 'real', or 'imag'.
+
+        The default `plot_type` for complex data is `dB-phase`.
+
+        `kwargs` include:
+        `axes` - the plot axes to use otherwise a new figure is created
+        `xlabel` - the x-axis label
+        `ylabel` - the y-axis label
+        `ylabel2` - the second y-axis label if needed, say for mag and phase
+        `xscale` - the x-axis scaling, say for plotting as ms
+        `yscale` - the y-axis scaling, say for plotting mV
+        `norm` - use normalized frequency
+        `dbmin` - the smallest value to plot in dB (default -120)
+        in addition to those supported by the matplotlib plot command.
+        
+        The plot axes are returned.  This is a tuple for magnitude/phase or
+        real/imaginary plots.
+
+        There are many plotting options, see lcapy.plot and
+        matplotlib.pyplot.plot.
+
+        For example:
+            V.plot(fvector, log_frequency=True)
+            V.real.plot(fvector, color='black')
+            V.phase.plot(fvector, color='black', linestyle='--')
+
+        By default complex data is plotted as separate plots of
+        magnitude (dB) and phase.
+
+        """
+
+        from .plot import plot_frequency
+        return plot_frequency(self, fvector, plot_type=plot_type, **kwargs)
+
+    def bode_plot(self, fvector=None, **kwargs):
+        """Plot frequency response for a frequency-domain phasor as a Bode
+        plot (but without the straight line approximations).  fvector
+        specifies the frequencies.  If it is a tuple (f1, f2), it sets
+        the frequency limits.   Since a logarithmic frequency scale is used,
+        f1 must be greater than 0.
+
+        For more info, see `plot`.
+        """
+        
+        from .plot import plot_bode
+        return plot_bode(self, fvector, **kwargs)
+
+    def nyquist_plot(self, fvector=None, log_frequency=True, **kwargs):
+        """Plot frequency response as a Nyquist plot (real part versus
+        imaginary part).  fvector specifies the frequencies.  If it is
+        a tuple (f1, f2), it sets the frequency limits as (f1, f2).
+
+        `npoints` set the number of plotted points.
+
+        The unit circle is shown by default.  This can be disabled with `unitcircle=False`.
+        """        
+
+        from .plot import plot_nyquist
+        return plot_nyquist(self, fvector, log_frequency=log_frequency, **kwargs)
+    
+    
+def fexpr(arg, **assumptions):
+    """Create FourierDomainExpression object.  If `arg` is fsym return f"""
+
+    if arg is fsym:
+        return f
+    return expr_make('fourier', arg, **assumptions)
+
+from .expressionclasses import expressionclasses
+
+classes = expressionclasses.register('fourier', FourierDomainExpression)
+
+f = FourierDomainExpression('f')
+f.units = uu.Hz
