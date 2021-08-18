@@ -1,0 +1,1 @@
+from .VkStatusPy import VkStatus, VkStatusException
