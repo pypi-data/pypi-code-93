@@ -1,0 +1,145 @@
+import requests
+from requests.compat import urljoin
+import re
+from eml_parser import EmlParser
+from datetime import datetime
+from typing import List, Optional
+
+
+__all__ = ['YadimDismail', 'BmOn2Dismail', 'BlubbermailDismail', 'CustomDismail']
+
+
+class Mail:
+    def __init__(self, mail_id: str, parsed_eml: dict):
+        self.parsed_eml: dict = parsed_eml
+        self.mail_id: int = int(mail_id)
+        self.body: str = parsed_eml['body'][0]['content']
+        self.sender: str = parsed_eml['header']['from']
+        self.time: datetime = parsed_eml['header']['date']
+        self.subject: str = parsed_eml['header']['subject']
+
+    @property
+    def truncated_body(self):
+        if len(self.body) > 30:
+            return f"{self.body[:30]}...".strip()
+        else:
+            return self.body.strip()
+
+    def __repr__(self):
+        return '(Mail: sender={}, time={}, subject={}, id={}, body={})'\
+            .format(self.sender, self.time, self.subject, self.mail_id, self.truncated_body)
+
+
+class Dismail:
+    _base_url = None
+    _base_url_api = None
+    _domain = None
+    _req_session = requests.Session()
+    __re_mail_id = re.compile(b'email_ids=(.*?)"')
+
+    def __init__(self, mail: Optional[str] = None, eml_parser_kwargs: Optional[dict] = None):
+        if eml_parser_kwargs is None:
+            eml_parser_kwargs = {}
+        eml_parser_kwargs.update({'include_raw_body': True})
+
+        self._eml_parser = EmlParser(**eml_parser_kwargs)
+        if mail is None:
+            self.mail = self._get_random()
+        elif mail.endswith(f"@{self._domain}"):
+            self.mail = mail
+        else:
+            self.mail = f"{mail}@{self._domain}"
+        self._mail_url = f"{self._base_url}/?{self.mail}"
+        self._mail_ids_recvd = []
+        self.all_mails = []
+
+    def _get_random(self):
+        params = {
+            'action': 'random'
+        }
+        return self._req_session.get(self._base_url, params=params).headers['location'][1:]
+
+    def check_for_new(self) -> int:
+        params = {
+            'action': 'has_new_messages',
+            'address': self.mail,
+            'email_ids': '|'.join(self._mail_ids_recvd)
+        }
+        response = self._req_session.get(self._base_url_api, params=params)
+        return int(response.text)
+
+    def fetch_all_mails(self) -> List[Mail]:
+        mail_ids = self._fetch_ids()
+        for mail_id in reversed(mail_ids):
+            if mail_id in self._mail_ids_recvd:
+                continue
+            raw_eml = self._get_eml_by_id(mail_id)
+            parsed_eml = self._eml_parser.decode_email_bytes(raw_eml)
+            self.all_mails.append(Mail(mail_id, parsed_eml))
+            self._mail_ids_recvd.append(mail_id)
+        return self.all_mails
+
+    def get_eml(self, mail: Mail) -> bytes:
+        return self._get_eml_by_id(mail.mail_id)
+
+    def _get_eml_by_id(self, mail_id):
+        params = {
+            'action': 'download_email',
+            'email_id': mail_id,
+            'address': self.mail
+        }
+        response = requests.get(self._base_url, params=params)
+        return response.content
+
+    def _fetch_ids(self):
+        response = self._req_session.get(self._mail_url)
+        emailids = self.__re_mail_id.search(response.content).group(1)
+        if bool(emailids):
+            return emailids.decode('utf-8').split('|')
+        else:
+            return []
+
+    def delete_mail(self, mail: Mail) -> None:
+        params = {
+            'action': 'delete_email',
+            'email_id': mail.mail_id,
+            'address': self.mail
+        }
+        self._req_session.get(self._base_url, params=params)
+
+
+class YadimDismail(Dismail):
+    def __init__(self, mail: str = None, eml_parser_kwargs: dict = None):
+        self._base_url = "https://yadim.dismail.de"
+        self._base_url_api = "https://yadim.dismail.de"
+        self._domain = "yadim.dismail.de"
+        super().__init__(mail, eml_parser_kwargs)
+
+
+class BmOn2Dismail(Dismail):
+    def __init__(self, mail: str = None, eml_parser_kwargs: dict = None):
+        self._base_url = "https://www.bm.on2.de"
+        self._base_url_api = "https://www.bm.on2.de/json-api.php"
+        self._domain = "bm.on2.de"
+        super().__init__(mail, eml_parser_kwargs)
+
+
+class BlubbermailDismail(Dismail):
+    def __init__(self, mail: str = None, eml_parser_kwargs: dict = None):
+        self._base_url = "https://blubbermail.de"
+        self._base_url_api = "https://blubbermail.de/json-api.php"
+        self._domain = "blubbermail.de"
+        super().__init__(mail, eml_parser_kwargs)
+
+
+class CustomDismail(Dismail):
+    def __init__(self, base_url: str, domain: str, base_url_api: Optional[str] = None, mail: str = None,
+                 eml_parser_kwargs: dict = None):
+        self._base_url = base_url
+        test_api_url = urljoin(base_url, "/json-api.php")
+        if base_url_api is None and self._req_session.head(test_api_url).status_code == 200:
+            self._base_url_api = test_api_url
+        else:
+            self._base_url_api = base_url
+        self._domain = domain
+        super().__init__(mail, eml_parser_kwargs)
