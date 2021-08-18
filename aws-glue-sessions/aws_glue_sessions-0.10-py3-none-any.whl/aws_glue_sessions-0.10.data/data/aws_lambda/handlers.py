@@ -1,0 +1,1 @@
+from aws_glue_interactive_sessions_kernel import hello_world
