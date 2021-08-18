@@ -1,0 +1,4421 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+#
+# Generated Mon Aug  9 16:23:07 2021 by generateDS.py version 2.39.2.
+# Python 3.8.10 (default, Jun 24 2021, 11:25:09)  [GCC 5.4.0]
+#
+# Command line options:
+#   ('-o', 'libsbgn.py')
+#   ('-s', 'libsbgnSubs.py')
+#
+# Command line arguments:
+#   ../neo2sbgnml/libsbgn-0.3.xsd
+#
+# Command line:
+#   /home/vid/programiranje/NIB-SKM/libsbgn-python/venv/bin/generateDS.py -o "libsbgn.py" -s "libsbgnSubs.py" ../neo2sbgnml/libsbgn-0.3.xsd
+#
+# Current working directory (os.getcwd()):
+#   libsbgn-python
+#
+
+import sys
+try:
+    ModulenotfoundExp_ = ModuleNotFoundError
+except NameError:
+    ModulenotfoundExp_ = ImportError
+from itertools import zip_longest
+import os
+import re as re_
+import base64
+import datetime as datetime_
+import decimal as decimal_
+try:
+    from lxml import etree as etree_
+except ModulenotfoundExp_ :
+    from xml.etree import ElementTree as etree_
+
+
+Validate_simpletypes_ = True
+SaveElementTreeNode = True
+if sys.version_info.major == 2:
+    BaseStrType_ = basestring
+else:
+    BaseStrType_ = str
+
+
+def parsexml_(infile, parser=None, **kwargs):
+    if parser is None:
+        # Use the lxml ElementTree compatible parser so that, e.g.,
+        #   we ignore comments.
+        try:
+            parser = etree_.ETCompatXMLParser()
+        except AttributeError:
+            # fallback to xml.etree
+            parser = etree_.XMLParser()
+    try:
+        if isinstance(infile, os.PathLike):
+            infile = os.path.join(infile)
+    except AttributeError:
+        pass
+    doc = etree_.parse(infile, parser=parser, **kwargs)
+    return doc
+
+
+def parsexmlstring_(instring, parser=None, **kwargs):
+    if parser is None:
+        # Use the lxml ElementTree compatible parser so that, e.g.,
+        #   we ignore comments.
+        try:
+            parser = etree_.ETCompatXMLParser()
+        except AttributeError:
+            # fallback to xml.etree
+            parser = etree_.XMLParser()
+    element = etree_.fromstring(instring, parser=parser, **kwargs)
+    return element
+
+#
+# Namespace prefix definition table (and other attributes, too)
+#
+# The module generatedsnamespaces, if it is importable, must contain
+# a dictionary named GeneratedsNamespaceDefs.  This Python dictionary
+# should map element type names (strings) to XML schema namespace prefix
+# definitions.  The export method for any class for which there is
+# a namespace prefix definition, will export that definition in the
+# XML representation of that element.  See the export method of
+# any generated element type class for an example of the use of this
+# table.
+# A sample table is:
+#
+#     # File: generatedsnamespaces.py
+#
+#     GenerateDSNamespaceDefs = {
+#         "ElementtypeA": "http://www.xxx.com/namespaceA",
+#         "ElementtypeB": "http://www.xxx.com/namespaceB",
+#     }
+#
+# Additionally, the generatedsnamespaces module can contain a python
+# dictionary named GenerateDSNamespaceTypePrefixes that associates element
+# types with the namespace prefixes that are to be added to the
+# "xsi:type" attribute value.  See the _exportAttributes method of
+# any generated element type and the generation of "xsi:type" for an
+# example of the use of this table.
+# An example table:
+#
+#     # File: generatedsnamespaces.py
+#
+#     GenerateDSNamespaceTypePrefixes = {
+#         "ElementtypeC": "aaa:",
+#         "ElementtypeD": "bbb:",
+#     }
+#
+
+try:
+    from generatedsnamespaces import GenerateDSNamespaceDefs as GenerateDSNamespaceDefs_
+except ModulenotfoundExp_ :
+    GenerateDSNamespaceDefs_ = {}
+try:
+    from generatedsnamespaces import GenerateDSNamespaceTypePrefixes as GenerateDSNamespaceTypePrefixes_
+except ModulenotfoundExp_ :
+    GenerateDSNamespaceTypePrefixes_ = {}
+
+#
+# You can replace the following class definition by defining an
+# importable module named "generatedscollector" containing a class
+# named "GdsCollector".  See the default class definition below for
+# clues about the possible content of that class.
+#
+try:
+    from generatedscollector import GdsCollector as GdsCollector_
+except ModulenotfoundExp_ :
+
+    class GdsCollector_(object):
+
+        def __init__(self, messages=None):
+            if messages is None:
+                self.messages = []
+            else:
+                self.messages = messages
+
+        def add_message(self, msg):
+            self.messages.append(msg)
+
+        def get_messages(self):
+            return self.messages
+
+        def clear_messages(self):
+            self.messages = []
+
+        def print_messages(self):
+            for msg in self.messages:
+                print("Warning: {}".format(msg))
+
+        def write_messages(self, outstream):
+            for msg in self.messages:
+                outstream.write("Warning: {}\n".format(msg))
+
+
+#
+# The super-class for enum types
+#
+
+try:
+    from enum import Enum
+except ModulenotfoundExp_ :
+    Enum = object
+
+#
+# The root super-class for element type classes
+#
+# Calls to the methods in these classes are generated by generateDS.py.
+# You can replace these methods by re-implementing the following class
+#   in a module named generatedssuper.py.
+
+try:
+    from generatedssuper import GeneratedsSuper
+except ModulenotfoundExp_ as exp:
+    try:
+        from generatedssupersuper import GeneratedsSuperSuper
+    except ModulenotfoundExp_ as exp:
+        class GeneratedsSuperSuper(object):
+            pass
+
+    class GeneratedsSuper(GeneratedsSuperSuper):
+        __hash__ = object.__hash__
+        tzoff_pattern = re_.compile(r'(\+|-)((0\d|1[0-3]):[0-5]\d|14:00)$')
+        class _FixedOffsetTZ(datetime_.tzinfo):
+            def __init__(self, offset, name):
+                self.__offset = datetime_.timedelta(minutes=offset)
+                self.__name = name
+            def utcoffset(self, dt):
+                return self.__offset
+            def tzname(self, dt):
+                return self.__name
+            def dst(self, dt):
+                return None
+        def gds_format_string(self, input_data, input_name=''):
+            return input_data
+        def gds_parse_string(self, input_data, node=None, input_name=''):
+            return input_data
+        def gds_validate_string(self, input_data, node=None, input_name=''):
+            if not input_data:
+                return ''
+            else:
+                return input_data
+        def gds_format_base64(self, input_data, input_name=''):
+            return base64.b64encode(input_data)
+        def gds_validate_base64(self, input_data, node=None, input_name=''):
+            return input_data
+        def gds_format_integer(self, input_data, input_name=''):
+            return '%d' % input_data
+        def gds_parse_integer(self, input_data, node=None, input_name=''):
+            try:
+                ival = int(input_data)
+            except (TypeError, ValueError) as exp:
+                raise_parse_error(node, 'Requires integer value: %s' % exp)
+            return ival
+        def gds_validate_integer(self, input_data, node=None, input_name=''):
+            try:
+                value = int(input_data)
+            except (TypeError, ValueError):
+                raise_parse_error(node, 'Requires integer value')
+            return value
+        def gds_format_integer_list(self, input_data, input_name=''):
+            if len(input_data) > 0 and not isinstance(input_data[0], BaseStrType_):
+                input_data = [str(s) for s in input_data]
+            return '%s' % ' '.join(input_data)
+        def gds_validate_integer_list(
+                self, input_data, node=None, input_name=''):
+            values = input_data.split()
+            for value in values:
+                try:
+                    int(value)
+                except (TypeError, ValueError):
+                    raise_parse_error(node, 'Requires sequence of integer values')
+            return values
+        def gds_format_float(self, input_data, input_name=''):
+            return ('%.15f' % input_data).rstrip('0')
+        def gds_parse_float(self, input_data, node=None, input_name=''):
+            try:
+                fval_ = float(input_data)
+            except (TypeError, ValueError) as exp:
+                raise_parse_error(node, 'Requires float or double value: %s' % exp)
+            return fval_
+        def gds_validate_float(self, input_data, node=None, input_name=''):
+            try:
+                value = float(input_data)
+            except (TypeError, ValueError):
+                raise_parse_error(node, 'Requires float value')
+            return value
+        def gds_format_float_list(self, input_data, input_name=''):
+            if len(input_data) > 0 and not isinstance(input_data[0], BaseStrType_):
+                input_data = [str(s) for s in input_data]
+            return '%s' % ' '.join(input_data)
+        def gds_validate_float_list(
+                self, input_data, node=None, input_name=''):
+            values = input_data.split()
+            for value in values:
+                try:
+                    float(value)
+                except (TypeError, ValueError):
+                    raise_parse_error(node, 'Requires sequence of float values')
+            return values
+        def gds_format_decimal(self, input_data, input_name=''):
+            return_value = '%s' % input_data
+            if '.' in return_value:
+                return_value = return_value.rstrip('0')
+                if return_value.endswith('.'):
+                    return_value = return_value.rstrip('.')
+            return return_value
+        def gds_parse_decimal(self, input_data, node=None, input_name=''):
+            try:
+                decimal_value = decimal_.Decimal(input_data)
+            except (TypeError, ValueError):
+                raise_parse_error(node, 'Requires decimal value')
+            return decimal_value
+        def gds_validate_decimal(self, input_data, node=None, input_name=''):
+            try:
+                value = decimal_.Decimal(input_data)
+            except (TypeError, ValueError):
+                raise_parse_error(node, 'Requires decimal value')
+            return value
+        def gds_format_decimal_list(self, input_data, input_name=''):
+            if len(input_data) > 0 and not isinstance(input_data[0], BaseStrType_):
+                input_data = [str(s) for s in input_data]
+            return ' '.join([self.gds_format_decimal(item) for item in input_data])
+        def gds_validate_decimal_list(
+                self, input_data, node=None, input_name=''):
+            values = input_data.split()
+            for value in values:
+                try:
+                    decimal_.Decimal(value)
+                except (TypeError, ValueError):
+                    raise_parse_error(node, 'Requires sequence of decimal values')
+            return values
+        def gds_format_double(self, input_data, input_name=''):
+            return '%s' % input_data
+        def gds_parse_double(self, input_data, node=None, input_name=''):
+            try:
+                fval_ = float(input_data)
+            except (TypeError, ValueError) as exp:
+                raise_parse_error(node, 'Requires double or float value: %s' % exp)
+            return fval_
+        def gds_validate_double(self, input_data, node=None, input_name=''):
+            try:
+                value = float(input_data)
+            except (TypeError, ValueError):
+                raise_parse_error(node, 'Requires double or float value')
+            return value
+        def gds_format_double_list(self, input_data, input_name=''):
+            if len(input_data) > 0 and not isinstance(input_data[0], BaseStrType_):
+                input_data = [str(s) for s in input_data]
+            return '%s' % ' '.join(input_data)
+        def gds_validate_double_list(
+                self, input_data, node=None, input_name=''):
+            values = input_data.split()
+            for value in values:
+                try:
+                    float(value)
+                except (TypeError, ValueError):
+                    raise_parse_error(
+                        node, 'Requires sequence of double or float values')
+            return values
+        def gds_format_boolean(self, input_data, input_name=''):
+            return ('%s' % input_data).lower()
+        def gds_parse_boolean(self, input_data, node=None, input_name=''):
+            if input_data in ('true', '1'):
+                bval = True
+            elif input_data in ('false', '0'):
+                bval = False
+            else:
+                raise_parse_error(node, 'Requires boolean value')
+            return bval
+        def gds_validate_boolean(self, input_data, node=None, input_name=''):
+            if input_data not in (True, 1, False, 0, ):
+                raise_parse_error(
+                    node,
+                    'Requires boolean value '
+                    '(one of True, 1, False, 0)')
+            return input_data
+        def gds_format_boolean_list(self, input_data, input_name=''):
+            if len(input_data) > 0 and not isinstance(input_data[0], BaseStrType_):
+                input_data = [str(s) for s in input_data]
+            return '%s' % ' '.join(input_data)
+        def gds_validate_boolean_list(
+                self, input_data, node=None, input_name=''):
+            values = input_data.split()
+            for value in values:
+                value = self.gds_parse_boolean(value, node, input_name)
+                if value not in (True, 1, False, 0, ):
+                    raise_parse_error(
+                        node,
+                        'Requires sequence of boolean values '
+                        '(one of True, 1, False, 0)')
+            return values
+        def gds_validate_datetime(self, input_data, node=None, input_name=''):
+            return input_data
+        def gds_format_datetime(self, input_data, input_name=''):
+            if input_data.microsecond == 0:
+                _svalue = '%04d-%02d-%02dT%02d:%02d:%02d' % (
+                    input_data.year,
+                    input_data.month,
+                    input_data.day,
+                    input_data.hour,
+                    input_data.minute,
+                    input_data.second,
+                )
+            else:
+                _svalue = '%04d-%02d-%02dT%02d:%02d:%02d.%s' % (
+                    input_data.year,
+                    input_data.month,
+                    input_data.day,
+                    input_data.hour,
+                    input_data.minute,
+                    input_data.second,
+                    ('%f' % (float(input_data.microsecond) / 1000000))[2:],
+                )
+            if input_data.tzinfo is not None:
+                tzoff = input_data.tzinfo.utcoffset(input_data)
+                if tzoff is not None:
+                    total_seconds = tzoff.seconds + (86400 * tzoff.days)
+                    if total_seconds == 0:
+                        _svalue += 'Z'
+                    else:
+                        if total_seconds < 0:
+                            _svalue += '-'
+                            total_seconds *= -1
+                        else:
+                            _svalue += '+'
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds - (hours * 3600)) // 60
+                        _svalue += '{0:02d}:{1:02d}'.format(hours, minutes)
+            return _svalue
+        @classmethod
+        def gds_parse_datetime(cls, input_data):
+            tz = None
+            if input_data[-1] == 'Z':
+                tz = GeneratedsSuper._FixedOffsetTZ(0, 'UTC')
+                input_data = input_data[:-1]
+            else:
+                results = GeneratedsSuper.tzoff_pattern.search(input_data)
+                if results is not None:
+                    tzoff_parts = results.group(2).split(':')
+                    tzoff = int(tzoff_parts[0]) * 60 + int(tzoff_parts[1])
+                    if results.group(1) == '-':
+                        tzoff *= -1
+                    tz = GeneratedsSuper._FixedOffsetTZ(
+                        tzoff, results.group(0))
+                    input_data = input_data[:-6]
+            time_parts = input_data.split('.')
+            if len(time_parts) > 1:
+                micro_seconds = int(float('0.' + time_parts[1]) * 1000000)
+                input_data = '%s.%s' % (
+                    time_parts[0], "{}".format(micro_seconds).rjust(6, "0"), )
+                dt = datetime_.datetime.strptime(
+                    input_data, '%Y-%m-%dT%H:%M:%S.%f')
+            else:
+                dt = datetime_.datetime.strptime(
+                    input_data, '%Y-%m-%dT%H:%M:%S')
+            dt = dt.replace(tzinfo=tz)
+            return dt
+        def gds_validate_date(self, input_data, node=None, input_name=''):
+            return input_data
+        def gds_format_date(self, input_data, input_name=''):
+            _svalue = '%04d-%02d-%02d' % (
+                input_data.year,
+                input_data.month,
+                input_data.day,
+            )
+            try:
+                if input_data.tzinfo is not None:
+                    tzoff = input_data.tzinfo.utcoffset(input_data)
+                    if tzoff is not None:
+                        total_seconds = tzoff.seconds + (86400 * tzoff.days)
+                        if total_seconds == 0:
+                            _svalue += 'Z'
+                        else:
+                            if total_seconds < 0:
+                                _svalue += '-'
+                                total_seconds *= -1
+                            else:
+                                _svalue += '+'
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds - (hours * 3600)) // 60
+                            _svalue += '{0:02d}:{1:02d}'.format(
+                                hours, minutes)
+            except AttributeError:
+                pass
+            return _svalue
+        @classmethod
+        def gds_parse_date(cls, input_data):
+            tz = None
+            if input_data[-1] == 'Z':
+                tz = GeneratedsSuper._FixedOffsetTZ(0, 'UTC')
+                input_data = input_data[:-1]
+            else:
+                results = GeneratedsSuper.tzoff_pattern.search(input_data)
+                if results is not None:
+                    tzoff_parts = results.group(2).split(':')
+                    tzoff = int(tzoff_parts[0]) * 60 + int(tzoff_parts[1])
+                    if results.group(1) == '-':
+                        tzoff *= -1
+                    tz = GeneratedsSuper._FixedOffsetTZ(
+                        tzoff, results.group(0))
+                    input_data = input_data[:-6]
+            dt = datetime_.datetime.strptime(input_data, '%Y-%m-%d')
+            dt = dt.replace(tzinfo=tz)
+            return dt.date()
+        def gds_validate_time(self, input_data, node=None, input_name=''):
+            return input_data
+        def gds_format_time(self, input_data, input_name=''):
+            if input_data.microsecond == 0:
+                _svalue = '%02d:%02d:%02d' % (
+                    input_data.hour,
+                    input_data.minute,
+                    input_data.second,
+                )
+            else:
+                _svalue = '%02d:%02d:%02d.%s' % (
+                    input_data.hour,
+                    input_data.minute,
+                    input_data.second,
+                    ('%f' % (float(input_data.microsecond) / 1000000))[2:],
+                )
+            if input_data.tzinfo is not None:
+                tzoff = input_data.tzinfo.utcoffset(input_data)
+                if tzoff is not None:
+                    total_seconds = tzoff.seconds + (86400 * tzoff.days)
+                    if total_seconds == 0:
+                        _svalue += 'Z'
+                    else:
+                        if total_seconds < 0:
+                            _svalue += '-'
+                            total_seconds *= -1
+                        else:
+                            _svalue += '+'
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds - (hours * 3600)) // 60
+                        _svalue += '{0:02d}:{1:02d}'.format(hours, minutes)
+            return _svalue
+        def gds_validate_simple_patterns(self, patterns, target):
+            # pat is a list of lists of strings/patterns.
+            # The target value must match at least one of the patterns
+            # in order for the test to succeed.
+            found1 = True
+            for patterns1 in patterns:
+                found2 = False
+                for patterns2 in patterns1:
+                    mo = re_.search(patterns2, target)
+                    if mo is not None and len(mo.group(0)) == len(target):
+                        found2 = True
+                        break
+                if not found2:
+                    found1 = False
+                    break
+            return found1
+        @classmethod
+        def gds_parse_time(cls, input_data):
+            tz = None
+            if input_data[-1] == 'Z':
+                tz = GeneratedsSuper._FixedOffsetTZ(0, 'UTC')
+                input_data = input_data[:-1]
+            else:
+                results = GeneratedsSuper.tzoff_pattern.search(input_data)
+                if results is not None:
+                    tzoff_parts = results.group(2).split(':')
+                    tzoff = int(tzoff_parts[0]) * 60 + int(tzoff_parts[1])
+                    if results.group(1) == '-':
+                        tzoff *= -1
+                    tz = GeneratedsSuper._FixedOffsetTZ(
+                        tzoff, results.group(0))
+                    input_data = input_data[:-6]
+            if len(input_data.split('.')) > 1:
+                dt = datetime_.datetime.strptime(input_data, '%H:%M:%S.%f')
+            else:
+                dt = datetime_.datetime.strptime(input_data, '%H:%M:%S')
+            dt = dt.replace(tzinfo=tz)
+            return dt.time()
+        def gds_check_cardinality_(
+                self, value, input_name,
+                min_occurs=0, max_occurs=1, required=None):
+            if value is None:
+                length = 0
+            elif isinstance(value, list):
+                length = len(value)
+            else:
+                length = 1
+            if required is not None :
+                if required and length < 1:
+                    self.gds_collector_.add_message(
+                        "Required value {}{} is missing".format(
+                            input_name, self.gds_get_node_lineno_()))
+            if length < min_occurs:
+                self.gds_collector_.add_message(
+                    "Number of values for {}{} is below "
+                    "the minimum allowed, "
+                    "expected at least {}, found {}".format(
+                        input_name, self.gds_get_node_lineno_(),
+                        min_occurs, length))
+            elif length > max_occurs:
+                self.gds_collector_.add_message(
+                    "Number of values for {}{} is above "
+                    "the maximum allowed, "
+                    "expected at most {}, found {}".format(
+                        input_name, self.gds_get_node_lineno_(),
+                        max_occurs, length))
+        def gds_validate_builtin_ST_(
+                self, validator, value, input_name,
+                min_occurs=None, max_occurs=None, required=None):
+            if value is not None:
+                try:
+                    validator(value, input_name=input_name)
+                except GDSParseError as parse_error:
+                    self.gds_collector_.add_message(str(parse_error))
+        def gds_validate_defined_ST_(
+                self, validator, value, input_name,
+                min_occurs=None, max_occurs=None, required=None):
+            if value is not None:
+                try:
+                    validator(value)
+                except GDSParseError as parse_error:
+                    self.gds_collector_.add_message(str(parse_error))
+        def gds_str_lower(self, instring):
+            return instring.lower()
+        def get_path_(self, node):
+            path_list = []
+            self.get_path_list_(node, path_list)
+            path_list.reverse()
+            path = '/'.join(path_list)
+            return path
+        Tag_strip_pattern_ = re_.compile(r'\{.*\}')
+        def get_path_list_(self, node, path_list):
+            if node is None:
+                return
+            tag = GeneratedsSuper.Tag_strip_pattern_.sub('', node.tag)
+            if tag:
+                path_list.append(tag)
+            self.get_path_list_(node.getparent(), path_list)
+        def get_class_obj_(self, node, default_class=None):
+            class_obj1 = default_class
+            if 'xsi' in node.nsmap:
+                classname = node.get('{%s}type' % node.nsmap['xsi'])
+                if classname is not None:
+                    names = classname.split(':')
+                    if len(names) == 2:
+                        classname = names[1]
+                    class_obj2 = globals().get(classname)
+                    if class_obj2 is not None:
+                        class_obj1 = class_obj2
+            return class_obj1
+        def gds_build_any(self, node, type_name=None):
+            # provide default value in case option --disable-xml is used.
+            content = ""
+            content = etree_.tostring(node, encoding="unicode")
+            return content
+        @classmethod
+        def gds_reverse_node_mapping(cls, mapping):
+            return dict(((v, k) for k, v in mapping.items()))
+        @staticmethod
+        def gds_encode(instring):
+            if sys.version_info.major == 2:
+                if ExternalEncoding:
+                    encoding = ExternalEncoding
+                else:
+                    encoding = 'utf-8'
+                return instring.encode(encoding)
+            else:
+                return instring
+        @staticmethod
+        def convert_unicode(instring):
+            if isinstance(instring, str):
+                result = quote_xml(instring)
+            elif sys.version_info.major == 2 and isinstance(instring, unicode):
+                result = quote_xml(instring).encode('utf8')
+            else:
+                result = GeneratedsSuper.gds_encode(str(instring))
+            return result
+        def __eq__(self, other):
+            def excl_select_objs_(obj):
+                return (obj[0] != 'parent_object_' and
+                        obj[0] != 'gds_collector_')
+            if type(self) != type(other):
+                return False
+            return all(x == y for x, y in zip_longest(
+                filter(excl_select_objs_, self.__dict__.items()),
+                filter(excl_select_objs_, other.__dict__.items())))
+        def __ne__(self, other):
+            return not self.__eq__(other)
+        # Django ETL transform hooks.
+        def gds_djo_etl_transform(self):
+            pass
+        def gds_djo_etl_transform_db_obj(self, dbobj):
+            pass
+        # SQLAlchemy ETL transform hooks.
+        def gds_sqa_etl_transform(self):
+            return 0, None
+        def gds_sqa_etl_transform_db_obj(self, dbobj):
+            pass
+        def gds_get_node_lineno_(self):
+            if (hasattr(self, "gds_elementtree_node_") and
+                    self.gds_elementtree_node_ is not None):
+                return ' near line {}'.format(
+                    self.gds_elementtree_node_.sourceline)
+            else:
+                return ""
+
+
+    def getSubclassFromModule_(module, class_):
+        '''Get the subclass of a class from a specific module.'''
+        name = class_.__name__ + 'Sub'
+        if hasattr(module, name):
+            return getattr(module, name)
+        else:
+            return None
+
+
+#
+# If you have installed IPython you can uncomment and use the following.
+# IPython is available from http://ipython.scipy.org/.
+#
+
+## from IPython.Shell import IPShellEmbed
+## args = ''
+## ipshell = IPShellEmbed(args,
+##     banner = 'Dropping into IPython',
+##     exit_msg = 'Leaving Interpreter, back to program.')
+
+# Then use the following line where and when you want to drop into the
+# IPython shell:
+#    ipshell('<some message> -- Entering ipshell.\nHit Ctrl-D to exit')
+
+#
+# Globals
+#
+
+ExternalEncoding = ''
+# Set this to false in order to deactivate during export, the use of
+# name space prefixes captured from the input document.
+UseCapturedNS_ = True
+CapturedNsmap_ = {}
+Tag_pattern_ = re_.compile(r'({.*})?(.*)')
+String_cleanup_pat_ = re_.compile(r"[\n\r\s]+")
+Namespace_extract_pat_ = re_.compile(r'{(.*)}(.*)')
+CDATA_pattern_ = re_.compile(r"<!\[CDATA\[.*?\]\]>", re_.DOTALL)
+
+# Change this to redirect the generated superclass module to use a
+# specific subclass module.
+CurrentSubclassModule_ = None
+
+#
+# Support/utility functions.
+#
+
+
+def showIndent(outfile, level, pretty_print=True):
+    if pretty_print:
+        for idx in range(level):
+            outfile.write('    ')
+
+
+def quote_xml(inStr):
+    "Escape markup chars, but do not modify CDATA sections."
+    if not inStr:
+        return ''
+    s1 = (isinstance(inStr, BaseStrType_) and inStr or '%s' % inStr)
+    s2 = ''
+    pos = 0
+    matchobjects = CDATA_pattern_.finditer(s1)
+    for mo in matchobjects:
+        s3 = s1[pos:mo.start()]
+        s2 += quote_xml_aux(s3)
+        s2 += s1[mo.start():mo.end()]
+        pos = mo.end()
+    s3 = s1[pos:]
+    s2 += quote_xml_aux(s3)
+    return s2
+
+
+def quote_xml_aux(inStr):
+    s1 = inStr.replace('&', '&amp;')
+    s1 = s1.replace('<', '&lt;')
+    s1 = s1.replace('>', '&gt;')
+    return s1
+
+
+def quote_attrib(inStr):
+    s1 = (isinstance(inStr, BaseStrType_) and inStr or '%s' % inStr)
+    s1 = s1.replace('&', '&amp;')
+    s1 = s1.replace('<', '&lt;')
+    s1 = s1.replace('>', '&gt;')
+    if '"' in s1:
+        if "'" in s1:
+            s1 = '"%s"' % s1.replace('"', "&quot;")
+        else:
+            s1 = "'%s'" % s1
+    else:
+        s1 = '"%s"' % s1
+    return s1
+
+
+def quote_python(inStr):
+    s1 = inStr
+    if s1.find("'") == -1:
+        if s1.find('\n') == -1:
+            return "'%s'" % s1
+        else:
+            return "'''%s'''" % s1
+    else:
+        if s1.find('"') != -1:
+            s1 = s1.replace('"', '\\"')
+        if s1.find('\n') == -1:
+            return '"%s"' % s1
+        else:
+            return '"""%s"""' % s1
+
+
+def get_all_text_(node):
+    if node.text is not None:
+        text = node.text
+    else:
+        text = ''
+    for child in node:
+        if child.tail is not None:
+            text += child.tail
+    return text
+
+
+def find_attr_value_(attr_name, node):
+    attrs = node.attrib
+    attr_parts = attr_name.split(':')
+    value = None
+    if len(attr_parts) == 1:
+        value = attrs.get(attr_name)
+    elif len(attr_parts) == 2:
+        prefix, name = attr_parts
+        if prefix == 'xml':
+            namespace = 'http://www.w3.org/XML/1998/namespace'
+        else:
+            namespace = node.nsmap.get(prefix)
+        if namespace is not None:
+            value = attrs.get('{%s}%s' % (namespace, name, ))
+    return value
+
+
+def encode_str_2_3(instr):
+    return instr
+
+
+class GDSParseError(Exception):
+    pass
+
+
+def raise_parse_error(node, msg):
+    if node is not None:
+        msg = '%s (element %s/line %d)' % (msg, node.tag, node.sourceline, )
+    raise GDSParseError(msg)
+
+
+class MixedContainer:
+    # Constants for category:
+    CategoryNone = 0
+    CategoryText = 1
+    CategorySimple = 2
+    CategoryComplex = 3
+    # Constants for content_type:
+    TypeNone = 0
+    TypeText = 1
+    TypeString = 2
+    TypeInteger = 3
+    TypeFloat = 4
+    TypeDecimal = 5
+    TypeDouble = 6
+    TypeBoolean = 7
+    TypeBase64 = 8
+    def __init__(self, category, content_type, name, value):
+        self.category = category
+        self.content_type = content_type
+        self.name = name
+        self.value = value
+    def getCategory(self):
+        return self.category
+    def getContenttype(self, content_type):
+        return self.content_type
+    def getValue(self):
+        return self.value
+    def getName(self):
+        return self.name
+    def export(self, outfile, level, name, namespace,
+               pretty_print=True):
+        if self.category == MixedContainer.CategoryText:
+            # Prevent exporting empty content as empty lines.
+            if self.value.strip():
+                outfile.write(self.value)
+        elif self.category == MixedContainer.CategorySimple:
+            self.exportSimple(outfile, level, name)
+        else:    # category == MixedContainer.CategoryComplex
+            self.value.export(
+                outfile, level, namespace, name_=name,
+                pretty_print=pretty_print)
+    def exportSimple(self, outfile, level, name):
+        if self.content_type == MixedContainer.TypeString:
+            outfile.write('<%s>%s</%s>' % (
+                self.name, self.value, self.name))
+        elif self.content_type == MixedContainer.TypeInteger or \
+                self.content_type == MixedContainer.TypeBoolean:
+            outfile.write('<%s>%d</%s>' % (
+                self.name, self.value, self.name))
+        elif self.content_type == MixedContainer.TypeFloat or \
+                self.content_type == MixedContainer.TypeDecimal:
+            outfile.write('<%s>%f</%s>' % (
+                self.name, self.value, self.name))
+        elif self.content_type == MixedContainer.TypeDouble:
+            outfile.write('<%s>%g</%s>' % (
+                self.name, self.value, self.name))
+        elif self.content_type == MixedContainer.TypeBase64:
+            outfile.write('<%s>%s</%s>' % (
+                self.name,
+                base64.b64encode(self.value),
+                self.name))
+    def to_etree(self, element, mapping_=None, nsmap_=None):
+        if self.category == MixedContainer.CategoryText:
+            # Prevent exporting empty content as empty lines.
+            if self.value.strip():
+                if len(element) > 0:
+                    if element[-1].tail is None:
+                        element[-1].tail = self.value
+                    else:
+                        element[-1].tail += self.value
+                else:
+                    if element.text is None:
+                        element.text = self.value
+                    else:
+                        element.text += self.value
+        elif self.category == MixedContainer.CategorySimple:
+            subelement = etree_.SubElement(
+                element, '%s' % self.name)
+            subelement.text = self.to_etree_simple()
+        else:    # category == MixedContainer.CategoryComplex
+            self.value.to_etree(element)
+    def to_etree_simple(self, mapping_=None, nsmap_=None):
+        if self.content_type == MixedContainer.TypeString:
+            text = self.value
+        elif (self.content_type == MixedContainer.TypeInteger or
+                self.content_type == MixedContainer.TypeBoolean):
+            text = '%d' % self.value
+        elif (self.content_type == MixedContainer.TypeFloat or
+                self.content_type == MixedContainer.TypeDecimal):
+            text = '%f' % self.value
+        elif self.content_type == MixedContainer.TypeDouble:
+            text = '%g' % self.value
+        elif self.content_type == MixedContainer.TypeBase64:
+            text = '%s' % base64.b64encode(self.value)
+        return text
+    def exportLiteral(self, outfile, level, name):
+        if self.category == MixedContainer.CategoryText:
+            showIndent(outfile, level)
+            outfile.write(
+                'model_.MixedContainer(%d, %d, "%s", "%s"),\n' % (
+                    self.category, self.content_type,
+                    self.name, self.value))
+        elif self.category == MixedContainer.CategorySimple:
+            showIndent(outfile, level)
+            outfile.write(
+                'model_.MixedContainer(%d, %d, "%s", "%s"),\n' % (
+                    self.category, self.content_type,
+                    self.name, self.value))
+        else:    # category == MixedContainer.CategoryComplex
+            showIndent(outfile, level)
+            outfile.write(
+                'model_.MixedContainer(%d, %d, "%s",\n' % (
+                    self.category, self.content_type, self.name,))
+            self.value.exportLiteral(outfile, level + 1)
+            showIndent(outfile, level)
+            outfile.write(')\n')
+
+
+class MemberSpec_(object):
+    def __init__(self, name='', data_type='', container=0,
+            optional=0, child_attrs=None, choice=None):
+        self.name = name
+        self.data_type = data_type
+        self.container = container
+        self.child_attrs = child_attrs
+        self.choice = choice
+        self.optional = optional
+    def set_name(self, name): self.name = name
+    def get_name(self): return self.name
+    def set_data_type(self, data_type): self.data_type = data_type
+    def get_data_type_chain(self): return self.data_type
+    def get_data_type(self):
+        if isinstance(self.data_type, list):
+            if len(self.data_type) > 0:
+                return self.data_type[-1]
+            else:
+                return 'xs:string'
+        else:
+            return self.data_type
+    def set_container(self, container): self.container = container
+    def get_container(self): return self.container
+    def set_child_attrs(self, child_attrs): self.child_attrs = child_attrs
+    def get_child_attrs(self): return self.child_attrs
+    def set_choice(self, choice): self.choice = choice
+    def get_choice(self): return self.choice
+    def set_optional(self, optional): self.optional = optional
+    def get_optional(self): return self.optional
+
+
+def _cast(typ, value):
+    if typ is None or value is None:
+        return value
+    return typ(value)
+
+#
+# Data representation classes.
+#
+
+
+class classType(str, Enum):
+    """classType --
+    The class attribute defines the semantic of the glyph, and influences:
+    the way that glyph should be rendered,
+    the overall syntactic validity of the map.
+    The various classes encompass the following PD SBGN elements:
+    Entity Pool Nodes (EPN),
+    Process Nodes (PN),
+    Logic Operator Nodes,
+    Sub-glyphs on Nodes (State Variable, Unit of Information),
+    Sub-glyphs on Arcs (Stoichiometry Label),
+    Other glyphs (Compartment, Submap, Tag, Terminal).
+    And the following ER SBGN elements
+    Entities (Entity, Outcome)
+    Other (Annotation, Phenotype)
+    Auxiliary on glyps (Existence, Location)
+    Auxiliary on arcs (Cardinality)
+    Delay operator
+    implicit xor
+
+    """
+    UNSPECIFIED_ENTITY='unspecified entity'
+    SIMPLE_CHEMICAL='simple chemical'
+    MACROMOLECULE='macromolecule'
+    NUCLEIC_ACID_FEATURE='nucleic acid feature'
+    SIMPLE_CHEMICAL_MULTIMER='simple chemical multimer'
+    MACROMOLECULE_MULTIMER='macromolecule multimer'
+    NUCLEIC_ACID_FEATURE_MULTIMER='nucleic acid feature multimer'
+    COMPLEX='complex'
+    COMPLEX_MULTIMER='complex multimer'
+    SOURCE_AND_SINK='source and sink'
+    PERTURBATION='perturbation'
+    BIOLOGICAL_ACTIVITY='biological activity'
+    PERTURBING_AGENT='perturbing agent'
+    COMPARTMENT='compartment'
+    SUBMAP='submap'
+    TAG='tag'
+    TERMINAL='terminal'
+    PROCESS='process'
+    OMITTED_PROCESS='omitted process'
+    UNCERTAIN_PROCESS='uncertain process'
+    ASSOCIATION='association'
+    DISSOCIATION='dissociation'
+    PHENOTYPE='phenotype'
+    AND='and'
+    OR='or'
+    NOT='not'
+    STATE_VARIABLE='state variable'
+    UNIT_OF_INFORMATION='unit of information'
+    ENTITY='entity'
+    OUTCOME='outcome'
+    INTERACTION='interaction'
+    INFLUENCE_TARGET='influence target'
+    ANNOTATION='annotation'
+    VARIABLE_VALUE='variable value'
+    IMPLICIT_XOR='implicit xor'
+    DELAY='delay'
+    EXISTENCE='existence'
+    LOCATION='location'
+    CARDINALITY='cardinality'
+    OBSERVABLE='observable'
+
+
+class classType1(str, Enum):
+    """classType1 --
+    The class attribute defines the semantic of the arcgroup.
+
+    """
+    INTERACTION='interaction'
+
+
+class classType2(str, Enum):
+    """classType2 --
+    The class attribute defines the semantic of the arc, and influences:
+    the way that arc should be rendered,
+    the overall syntactic validity of the map.
+    The various classes encompass all possible types of SBGN arcs:
+    production and consumption arcs,
+    all types of modification arcs,
+    logic arcs,
+    equivalence arcs.
+    To express a reversible reaction,
+    use production arcs on both sides of the Process Node.
+
+    """
+    PRODUCTION='production'
+    CONSUMPTION='consumption'
+    CATALYSIS='catalysis'
+    MODULATION='modulation'
+    STIMULATION='stimulation'
+    INHIBITION='inhibition'
+    ASSIGNMENT='assignment'
+    INTERACTION='interaction'
+    ABSOLUTE_INHIBITION='absolute inhibition'
+    ABSOLUTE_STIMULATION='absolute stimulation'
+    POSITIVE_INFLUENCE='positive influence'
+    NEGATIVE_INFLUENCE='negative influence'
+    UNKNOWN_INFLUENCE='unknown influence'
+    EQUIVALENCE_ARC='equivalence arc'
+    NECESSARY_STIMULATION='necessary stimulation'
+    LOGIC_ARC='logic arc'
+
+
+class languageType(str, Enum):
+    """languageType --
+    Language of the map: one of three sublanguages defined by SBGN.
+    Different languages have different restrictions on the usage of sub-elements (that
+    are not encoded in this schema
+    but must be validated with an external validator)
+
+    """
+    ER = ENTITY_RELATIONSHIP='entity relationship'
+    PD = PROCESS_DESCRIPTION='process description'
+    AF = ACTIVIT_YFLOW='activity flow'
+
+
+class nameType(str, Enum):
+    UNSPECIFIED_ENTITY='unspecified entity'
+    SIMPLE_CHEMICAL='simple chemical'
+    MACROMOLECULE='macromolecule'
+    NUCLEIC_ACID_FEATURE='nucleic acid feature'
+    COMPLEX='complex'
+    PERTURBATION='perturbation'
+
+
+class orientationType(str, Enum):
+    """orientationType --
+    The orientation attribute is used to express how to draw asymmetric glyphs.
+    In PD, the orientation of Process Nodes is either horizontal or vertical.
+    It refers to an (imaginary) line connecting
+    the two in/out sides of the PN.
+    In PD, the orientation of Tags and Terminals can be left, right, up or down.
+    It refers to the direction the arrow side of the glyph is pointing at.
+
+    """
+    HORIZONTAL='horizontal'
+    VERTICAL='vertical'
+    LEFT='left'
+    RIGHT='right'
+    UP='up'
+    DOWN='down'
+
+
+class versionType(str, Enum):
+    """versionType --
+    Version of the map: URI identifier that gives the language, level and version
+    defined by SBGN.
+    Different languages/levels/versions have different restrictions on the usage of
+    sub-elements (that are not encoded in this schema
+    but must be validated with an external validator)
+
+    """
+    SBGN_PD_LEVEL_1_VERSION_1_3='http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.3'
+    SBGN_PD_LEVEL_1_VERSION_1_2='http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.2'
+    SBGN_PD_LEVEL_1_VERSION_1_1='http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.1'
+    SBGN_PD_LEVEL_1_VERSION_1_0='http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.0'
+    SBGN_PD_LEVEL_1_VERSION_1='http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1'
+    SBGN_ER_LEVEL_1_VERSION_2='http://identifiers.org/combine.specifications/sbgn.er.level-1.version-2'
+    SBGN_ER_LEVEL_1_VERSION_1_2='http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1.2'
+    SBGN_ER_LEVEL_1_VERSION_1_1='http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1.1'
+    SBGN_ER_LEVEL_1_VERSION_1_0='http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1.0'
+    SBGN_ER_LEVEL_1_VERSION_1='http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1'
+    SBGN_AF_LEVEL_1_VERSION_1_2='http://identifiers.org/combine.specifications/sbgn.af.level-1.version-1.2'
+    SBGN_AF_LEVEL_1_VERSION_1_0='http://identifiers.org/combine.specifications/sbgn.af.level-1.version-1.0'
+    SBGN_AF_LEVEL_1_VERSION_1='http://identifiers.org/combine.specifications/sbgn.af.level-1.version-1'
+
+
+class SBGNBase(GeneratedsSuper):
+    """SBGNBase --
+    The SBGNBase type is the base type of all main components in SBGN.
+    It supports attaching notes and extensions to components, with
+    metadata and annotations encoded in the extension element.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, notes=None, extension=None, extensiontype_=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.notes = notes
+        self.notes_nsprefix_ = None
+        self.extension = extension
+        self.extension_nsprefix_ = None
+        self.extensiontype_ = extensiontype_
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, SBGNBase)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if SBGNBase.subclass:
+            return SBGNBase.subclass(*args_, **kwargs_)
+        else:
+            return SBGNBase(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_notes(self):
+        return self.notes
+    def set_notes(self, notes):
+        self.notes = notes
+    def get_extension(self):
+        return self.extension
+    def set_extension(self, extension):
+        self.extension = extension
+    def get_extensiontype_(self): return self.extensiontype_
+    def set_extensiontype_(self, extensiontype_): self.extensiontype_ = extensiontype_
+    def _hasContent(self):
+        if (
+            self.notes is not None or
+            self.extension is not None
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='SBGNBase', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('SBGNBase')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'SBGNBase':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='SBGNBase')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='SBGNBase', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='SBGNBase'):
+        if self.extensiontype_ is not None and 'xsi:type' not in already_processed:
+            already_processed.add('xsi:type')
+            outfile.write(' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"')
+            if ":" not in self.extensiontype_:
+                imported_ns_type_prefix_ = GenerateDSNamespaceTypePrefixes_.get(self.extensiontype_, '')
+                outfile.write(' xsi:type="%s%s"' % (imported_ns_type_prefix_, self.extensiontype_))
+            else:
+                outfile.write(' xsi:type="%s"' % self.extensiontype_)
+        pass
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='SBGNBase', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.notes is not None:
+            namespaceprefix_ = self.notes_nsprefix_ + ':' if (UseCapturedNS_ and self.notes_nsprefix_) else ''
+            self.notes.export(outfile, level, namespaceprefix_, namespacedef_='', name_='notes', pretty_print=pretty_print)
+        if self.extension is not None:
+            namespaceprefix_ = self.extension_nsprefix_ + ':' if (UseCapturedNS_ and self.extension_nsprefix_) else ''
+            self.extension.export(outfile, level, namespaceprefix_, namespacedef_='', name_='extension', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('xsi:type', node)
+        if value is not None and 'xsi:type' not in already_processed:
+            already_processed.add('xsi:type')
+            self.extensiontype_ = value
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'notes':
+            obj_ = notesType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.notes = obj_
+            obj_.original_tagname_ = 'notes'
+        elif nodeName_ == 'extension':
+            obj_ = extensionType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.extension = obj_
+            obj_.original_tagname_ = 'extension'
+# end class SBGNBase
+
+
+class point(SBGNBase):
+    """
+    * point --
+      The point element is characterized by PointAttributes,
+      which describe absolute 2D cartesian coordinates. Namely:
+      x (horizontal, from left to right),
+      y (vertical, from top to bottom).
+      The origin is located in the top-left corner of the map.
+      There is no unit:
+      proportions must be preserved, but the maps can be drawn at any scale.
+      In the test files examples, to obtain a drawing similar to the reference
+      *.png file, values in the corresponding *.sbgn file should be read as pixels.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, x=None, y=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("point"), self).__init__(notes, extension,  **kwargs_)
+        self.x = _cast(float, x)
+        self.x_nsprefix_ = None
+        self.y = _cast(float, y)
+        self.y_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, point)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if point.subclass:
+            return point.subclass(*args_, **kwargs_)
+        else:
+            return point(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_x(self):
+        return self.x
+    def set_x(self, x):
+        self.x = x
+    def get_y(self):
+        return self.y
+    def set_y(self, y):
+        self.y = y
+    def _hasContent(self):
+        if (
+            super(point, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='point', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('point')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'point':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='point')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='point', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='point'):
+        super(point, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='point')
+        if self.x is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            outfile.write(' x="%s"' % self.gds_format_float(self.x, input_name='x'))
+        if self.y is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            outfile.write(' y="%s"' % self.gds_format_float(self.y, input_name='y'))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='point', fromsubclass_=False, pretty_print=True):
+        super(point, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('x', node)
+        if value is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            value = self.gds_parse_float(value, node, 'x')
+            self.x = value
+        value = find_attr_value_('y', node)
+        if value is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            value = self.gds_parse_float(value, node, 'y')
+            self.y = value
+        super(point, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        super(point, self)._buildChildren(child_, node, nodeName_, True)
+        pass
+# end class point
+
+
+class bbox(SBGNBase):
+    """bbox --
+    The bbox element describes a rectangle. This rectangle is defined by:
+    PointAttributes corresponding to the 2D coordinates of the top left
+    corner,
+    width and height attributes.
+    The rectangle corresponds to the outer bounding box of a shape.
+    The shape itself can be irregular
+    (for instance in the case of some compartments).
+    In the case of process nodes,
+    the bounding box only concerns the central glyph (square, or circle),
+    the input/output ports are not included, and neither are the lines connecting
+    them to the central glyph.
+    A bbox is required for all glyphs, and is optional for labels.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, w=None, h=None, x=None, y=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("bbox"), self).__init__(notes, extension,  **kwargs_)
+        self.w = _cast(float, w)
+        self.w_nsprefix_ = None
+        self.h = _cast(float, h)
+        self.h_nsprefix_ = None
+        self.x = _cast(float, x)
+        self.x_nsprefix_ = None
+        self.y = _cast(float, y)
+        self.y_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, bbox)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if bbox.subclass:
+            return bbox.subclass(*args_, **kwargs_)
+        else:
+            return bbox(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_w(self):
+        return self.w
+    def set_w(self, w):
+        self.w = w
+    def get_h(self):
+        return self.h
+    def set_h(self, h):
+        self.h = h
+    def get_x(self):
+        return self.x
+    def set_x(self, x):
+        self.x = x
+    def get_y(self):
+        return self.y
+    def set_y(self, y):
+        self.y = y
+    def _hasContent(self):
+        if (
+            super(bbox, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='bbox', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('bbox')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'bbox':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='bbox')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='bbox', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='bbox'):
+        super(bbox, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='bbox')
+        if self.w is not None and 'w' not in already_processed:
+            already_processed.add('w')
+            outfile.write(' w="%s"' % self.gds_format_float(self.w, input_name='w'))
+        if self.h is not None and 'h' not in already_processed:
+            already_processed.add('h')
+            outfile.write(' h="%s"' % self.gds_format_float(self.h, input_name='h'))
+        if self.x is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            outfile.write(' x="%s"' % self.gds_format_float(self.x, input_name='x'))
+        if self.y is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            outfile.write(' y="%s"' % self.gds_format_float(self.y, input_name='y'))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='bbox', fromsubclass_=False, pretty_print=True):
+        super(bbox, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('w', node)
+        if value is not None and 'w' not in already_processed:
+            already_processed.add('w')
+            value = self.gds_parse_float(value, node, 'w')
+            self.w = value
+        value = find_attr_value_('h', node)
+        if value is not None and 'h' not in already_processed:
+            already_processed.add('h')
+            value = self.gds_parse_float(value, node, 'h')
+            self.h = value
+        value = find_attr_value_('x', node)
+        if value is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            value = self.gds_parse_float(value, node, 'x')
+            self.x = value
+        value = find_attr_value_('y', node)
+        if value is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            value = self.gds_parse_float(value, node, 'y')
+            self.y = value
+        super(bbox, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        super(bbox, self)._buildChildren(child_, node, nodeName_, True)
+        pass
+# end class bbox
+
+
+class label(SBGNBase):
+    """label --
+    The label element describes the text accompanying a glyph.
+    The text attribute is mandatory.
+    Its position can be specified by a bbox (optional).
+    Tools are free to display the text in any style (font, font-size, etc.)
+    The bbox element of a label is optional.
+    When no bbox is defined, the bbox of the parent glyph is
+    inherited.
+    The label should be drawn centered horizontally and vertically in the
+    bbox.
+    When the bbox is inherited, the label can freely spill outside (just
+    like it can spill outside its parent glyph).
+    An explicit bbox provides a stronger hint regarding what surface the
+    label should cover. It defines an upper boundary outside of which the
+    label should (ideally) not spill. It also represents a preferred size:
+    the surface covered by the label can be smaller, but should ideally be
+    as close as possible to the bbox.
+    In most glyphs (EPNs, unit of information, etc.), the label is supposed
+    to be centered, so the bbox is usually omitted (unless there's a
+    specific hint to be shared concerning the area the label should ideally
+    cover).
+    However, labels can be drawn anywhere inside compartments or complex, so
+    these should preferably have an explicit bbox.
+
+    * text --
+      Multi-line labels are allowed.
+      Line breaks are encoded as
+      &
+      #xA; as specified by the
+      XML standard.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, text=None, bbox=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("label"), self).__init__(notes, extension,  **kwargs_)
+        self.text = _cast(None, text)
+        self.text_nsprefix_ = None
+        self.bbox = bbox
+        self.bbox_nsprefix_ = "sbgn"
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, label)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if label.subclass:
+            return label.subclass(*args_, **kwargs_)
+        else:
+            return label(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_bbox(self):
+        return self.bbox
+    def set_bbox(self, bbox):
+        self.bbox = bbox
+    def get_text(self):
+        return self.text
+    def set_text(self, text):
+        self.text = text
+    def _hasContent(self):
+        if (
+            self.bbox is not None or
+            super(label, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='label', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('label')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'label':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='label')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='label', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='label'):
+        super(label, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='label')
+        if self.text is not None and 'text' not in already_processed:
+            already_processed.add('text')
+            outfile.write(' text=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.text), input_name='text')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='label', fromsubclass_=False, pretty_print=True):
+        super(label, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.bbox is not None:
+            namespaceprefix_ = self.bbox_nsprefix_ + ':' if (UseCapturedNS_ and self.bbox_nsprefix_) else ''
+            self.bbox.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='bbox', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('text', node)
+        if value is not None and 'text' not in already_processed:
+            already_processed.add('text')
+            self.text = value
+        super(label, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'bbox':
+            obj_ = bbox.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.bbox = obj_
+            obj_.original_tagname_ = 'bbox'
+        super(label, self)._buildChildren(child_, node, nodeName_, True)
+# end class label
+
+
+class sbgn(SBGNBase):
+    """sbgn --
+    The sbgn element is the root of any SBGNML document.
+    Currently each document must contain exactly one map element.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, map=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("sbgn"), self).__init__(notes, extension,  **kwargs_)
+        if map is None:
+            self.map = []
+        else:
+            try:
+                iterator = iter(map)
+                ml = len(list(iterator))
+                if ml > 1:
+                    raise ValueError('Currently, each document must contain exactly one map element.')
+            except TypeError:
+                self.map = [map]
+            else:
+                self.map = map
+        self.map_nsprefix_ = "sbgn"
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, sbgn)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if sbgn.subclass:
+            return sbgn.subclass(*args_, **kwargs_)
+        else:
+            return sbgn(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_map(self):
+        return self.map
+    def set_map(self, map):
+        self.map = [map]
+    def add_map(self, value):
+        self.map.append(value)
+    def insert_map_at(self, index, value):
+        self.map.insert(index, value)
+    def replace_map_at(self, index, value):
+        self.map[index] = value
+    def _hasContent(self):
+        if (
+            self.map or
+            super(sbgn, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfilename, level=0, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='sbgn', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('sbgn')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'sbgn':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+
+        with open(outfilename, 'w') as outfile:
+            outfile.write("<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n")
+            showIndent(outfile, level, pretty_print)
+            outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+            already_processed = set()
+            self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='sbgn')
+            if self._hasContent():
+                outfile.write('>%s' % (eol_, ))
+                self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='sbgn', pretty_print=pretty_print)
+                showIndent(outfile, level, pretty_print)
+                outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+            else:
+                outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='sbgn'):
+        super(sbgn, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='sbgn')
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='sbgn', fromsubclass_=False, pretty_print=True):
+        super(sbgn, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        for map_ in self.map:
+            namespaceprefix_ = self.map_nsprefix_ + ':' if (UseCapturedNS_ and self.map_nsprefix_) else ''
+            map_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='map', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        super(sbgn, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'map':
+            obj_ = map.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.map.append(obj_)
+            obj_.original_tagname_ = 'map'
+        super(sbgn, self)._buildChildren(child_, node, nodeName_, True)
+# end class sbgn
+
+
+class map(SBGNBase):
+    """map --
+    The map element describes a single SBGN PD map.
+    It contains a list of glyph elements and a list of arc elements.
+    These lists can be of any size (possibly empty).
+
+    * version --
+      Version of the map: URI identifier that gives the language, level and version
+      defined by SBGN.
+      Different languages/levels/versions have different restrictions on the usage of
+      sub-elements (that are not encoded in this schema
+      but must be validated with an external validator)
+
+    * language --
+      Language of the map: one of three sublanguages defined by SBGN.
+      Different languages have different restrictions on the usage of sub-elements (that
+      are not encoded in this schema
+      but must be validated with an external validator)
+
+    * id --
+      The xsd:ID type is an alphanumeric identifier, starting with a
+      letter.
+      It is recommended to generate meaningless IDs (e.g. "map1234")
+      and avoid IDs with a meaning (e.g. "MAPK cascade")
+
+    * bbox --
+      The bbox element on a map is not mandatory, it allows the
+      application to define a canvas, and at the same time
+      define a whitespace margin around the glyphs.
+      If a bbox is defined on a map, all glyphs and arcs must be
+      inside this bbox, otherwise they could be
+      clipped off by applications.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, version=None, language=None, id=None, bbox=None, glyph=None, arc=None, arcgroup=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("map"), self).__init__(notes, extension,  **kwargs_)
+        self.version = _cast(None, version)
+        self.version_nsprefix_ = None
+        self.language = _cast(None, language)
+        self.language_nsprefix_ = None
+        self.id = _cast(None, id)
+        self.id_nsprefix_ = None
+        self.bbox = bbox
+        self.bbox_nsprefix_ = "sbgn"
+        if glyph is None:
+            self.glyph = []
+        else:
+            self.glyph = glyph
+        self.glyph_nsprefix_ = "sbgn"
+        if arc is None:
+            self.arc = []
+        else:
+            self.arc = arc
+        self.arc_nsprefix_ = "sbgn"
+        if arcgroup is None:
+            self.arcgroup = []
+        else:
+            self.arcgroup = arcgroup
+        self.arcgroup_nsprefix_ = "sbgn"
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, map)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if map.subclass:
+            return map.subclass(*args_, **kwargs_)
+        else:
+            return map(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_bbox(self):
+        return self.bbox
+    def set_bbox(self, bbox):
+        self.bbox = bbox
+    def get_glyph(self):
+        return self.glyph
+    def set_glyph(self, glyph):
+        self.glyph = glyph
+    def add_glyph(self, value):
+        self.glyph.append(value)
+    def insert_glyph_at(self, index, value):
+        self.glyph.insert(index, value)
+    def replace_glyph_at(self, index, value):
+        self.glyph[index] = value
+    def get_arc(self):
+        return self.arc
+    def set_arc(self, arc):
+        self.arc = arc
+    def add_arc(self, value):
+        self.arc.append(value)
+    def insert_arc_at(self, index, value):
+        self.arc.insert(index, value)
+    def replace_arc_at(self, index, value):
+        self.arc[index] = value
+    def get_arcgroup(self):
+        return self.arcgroup
+    def set_arcgroup(self, arcgroup):
+        self.arcgroup = arcgroup
+    def add_arcgroup(self, value):
+        self.arcgroup.append(value)
+    def insert_arcgroup_at(self, index, value):
+        self.arcgroup.insert(index, value)
+    def replace_arcgroup_at(self, index, value):
+        self.arcgroup[index] = value
+    def get_version(self):
+        return self.version
+    def set_version(self, version):
+        self.version = version
+    def get_language(self):
+        return self.language
+    def set_language(self, language):
+        self.language = language
+    def get_id(self):
+        return self.id
+    def set_id(self, id):
+        self.id = id
+    def validate_versionType(self, value):
+        # Validate type versionType, a restriction on xsd:anyURI.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.3', 'http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.2', 'http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.1', 'http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1.0', 'http://identifiers.org/combine.specifications/sbgn.pd.level-1.version-1', 'http://identifiers.org/combine.specifications/sbgn.er.level-1.version-2', 'http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1.2', 'http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1.1', 'http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1.0', 'http://identifiers.org/combine.specifications/sbgn.er.level-1.version-1', 'http://identifiers.org/combine.specifications/sbgn.af.level-1.version-1.2', 'http://identifiers.org/combine.specifications/sbgn.af.level-1.version-1.0', 'http://identifiers.org/combine.specifications/sbgn.af.level-1.version-1']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on versionType' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def validate_languageType(self, value):
+        # Validate type languageType, a restriction on xsd:string.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['entity relationship', 'process description', 'activity flow']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on languageType' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def _hasContent(self):
+        if (
+            self.bbox is not None or
+            self.glyph or
+            self.arc or
+            self.arcgroup or
+            super(map, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='map', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('map')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'map':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='map')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='map', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='map'):
+        super(map, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='map')
+        if self.version is not None and 'version' not in already_processed:
+            already_processed.add('version')
+            outfile.write(' version=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.version), input_name='version')), ))
+        if self.language is not None and 'language' not in already_processed:
+            already_processed.add('language')
+            outfile.write(' language=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.language), input_name='language')), ))
+        if self.id is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            outfile.write(' id=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.id), input_name='id')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='map', fromsubclass_=False, pretty_print=True):
+        super(map, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.bbox is not None:
+            namespaceprefix_ = self.bbox_nsprefix_ + ':' if (UseCapturedNS_ and self.bbox_nsprefix_) else ''
+            self.bbox.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='bbox', pretty_print=pretty_print)
+        for glyph_ in self.glyph:
+            namespaceprefix_ = self.glyph_nsprefix_ + ':' if (UseCapturedNS_ and self.glyph_nsprefix_) else ''
+            glyph_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='glyph', pretty_print=pretty_print)
+        for arc_ in self.arc:
+            namespaceprefix_ = self.arc_nsprefix_ + ':' if (UseCapturedNS_ and self.arc_nsprefix_) else ''
+            arc_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='arc', pretty_print=pretty_print)
+        for arcgroup_ in self.arcgroup:
+            namespaceprefix_ = self.arcgroup_nsprefix_ + ':' if (UseCapturedNS_ and self.arcgroup_nsprefix_) else ''
+            arcgroup_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='arcgroup', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('version', node)
+        if value is not None and 'version' not in already_processed:
+            already_processed.add('version')
+            self.version = value
+            self.validate_versionType(self.version)    # validate type versionType
+        value = find_attr_value_('language', node)
+        if value is not None and 'language' not in already_processed:
+            already_processed.add('language')
+            self.language = value
+            self.validate_languageType(self.language)    # validate type languageType
+        value = find_attr_value_('id', node)
+        if value is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            self.id = value
+        super(map, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'bbox':
+            obj_ = bbox.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.bbox = obj_
+            obj_.original_tagname_ = 'bbox'
+        elif nodeName_ == 'glyph':
+            obj_ = glyph.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.glyph.append(obj_)
+            obj_.original_tagname_ = 'glyph'
+        elif nodeName_ == 'arc':
+            obj_ = arc.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.arc.append(obj_)
+            obj_.original_tagname_ = 'arc'
+        elif nodeName_ == 'arcgroup':
+            obj_ = arcgroup.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.arcgroup.append(obj_)
+            obj_.original_tagname_ = 'arcgroup'
+        super(map, self)._buildChildren(child_, node, nodeName_, True)
+# end class map
+
+
+class port(SBGNBase):
+    """port --
+    The port element describes an anchor point to which arcs can refer
+    as a source or target. It consists of:
+    absolute 2D cartesian coordinates (PointAttribute),
+    a unique id attribute.
+    Two port elements are required for process nodes. They represent
+    the extremity of the two "arms" which protrude on both sides of the
+    core of the glyph (= square or circle shape).
+    Other glyphs don't need ports (but can use them if desired).
+
+    * id --
+      The xsd:ID type is an alphanumeric identifier, starting with a letter.
+      Port IDs often contain the ID of their glyph, followed by a
+      local port number (e.g. glyph4.1, glyph4.2, etc.)
+      However, this style convention is not mandatory,
+      and IDs should never be interpreted as carrying any meaning.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, id=None, x=None, y=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("port"), self).__init__(notes, extension,  **kwargs_)
+        self.id = _cast(None, id)
+        self.id_nsprefix_ = None
+        self.x = _cast(float, x)
+        self.x_nsprefix_ = None
+        self.y = _cast(float, y)
+        self.y_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, port)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if port.subclass:
+            return port.subclass(*args_, **kwargs_)
+        else:
+            return port(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_id(self):
+        return self.id
+    def set_id(self, id):
+        self.id = id
+    def get_x(self):
+        return self.x
+    def set_x(self, x):
+        self.x = x
+    def get_y(self):
+        return self.y
+    def set_y(self, y):
+        self.y = y
+    def _hasContent(self):
+        if (
+            super(port, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='port', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('port')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'port':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='port')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='port', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='port'):
+        super(port, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='port')
+        if self.id is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            outfile.write(' id=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.id), input_name='id')), ))
+        if self.x is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            outfile.write(' x="%s"' % self.gds_format_float(self.x, input_name='x'))
+        if self.y is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            outfile.write(' y="%s"' % self.gds_format_float(self.y, input_name='y'))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='port', fromsubclass_=False, pretty_print=True):
+        super(port, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('id', node)
+        if value is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            self.id = value
+        value = find_attr_value_('x', node)
+        if value is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            value = self.gds_parse_float(value, node, 'x')
+            self.x = value
+        value = find_attr_value_('y', node)
+        if value is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            value = self.gds_parse_float(value, node, 'y')
+            self.y = value
+        super(port, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        super(port, self)._buildChildren(child_, node, nodeName_, True)
+        pass
+# end class port
+
+
+class glyph(SBGNBase):
+    """glyph --
+    The glyph element is:
+    either a stand-alone, high-level SBGN glyph
+    (EPN, PN, compartment, etc),
+    or a sub-glyph
+    (state variable, unit of information, inside of a complex, ...)
+    In the first case, it appears directly in the glyph list of the map.
+    In the second case, it is a child of another glyph element.
+    The text inside a glyph is described:
+    either by a label element (optional)
+    [process nodes can't have one],
+    or by a state element (optional)
+    [for state variables only].
+
+    * class --
+      The class attribute defines the semantic of the glyph, and influences:
+      the way that glyph should be rendered,
+      the overall syntactic validity of the map.
+      The various classes encompass the following PD SBGN elements:
+      Entity Pool Nodes (EPN),
+      Process Nodes (PN),
+      Logic Operator Nodes,
+      Sub-glyphs on Nodes (State Variable, Unit of Information),
+      Sub-glyphs on Arcs (Stoichiometry Label),
+      Other glyphs (Compartment, Submap, Tag, Terminal).
+      And the following ER SBGN elements
+      Entities (Entity, Outcome)
+      Other (Annotation, Phenotype)
+      Auxiliary on glyps (Existence, Location)
+      Auxiliary on arcs (Cardinality)
+      Delay operator
+      implicit xor
+
+    * orientation --
+      The orientation attribute is used to express how to draw asymmetric glyphs.
+      In PD, the orientation of Process Nodes is either horizontal or vertical.
+      It refers to an (imaginary) line connecting the two in/out sides of the PN.
+      In PD, the orientation of Tags and Terminals can be left, right, up or down.
+      It refers to the direction the arrow side of the glyph is pointing at.
+
+    * id --
+      The xsd:ID type is an alphanumeric identifier, starting with a
+      letter.
+      It is recommended to generate meaningless IDs (e.g. "glyph1234")
+      and avoid IDs with a meaning (e.g. "epn_ethanol")
+
+    * compartmentRef --
+      Reference to the ID of the compartment that this glyph
+      is part of. Only use
+      this if there is at least one explicit compartment
+      present in the diagram. Compartments are
+      only used in PD and AF, and thus this attribute as well.
+      For PD, this should be used only for EPN's.
+      For AF, this should be used only for Activity Nodes.
+      In case there are no compartments, entities that
+      can have a location, such as EPN's, are implicit
+      member of an invisible compartment that
+      encompasses the whole map. In that case, this
+      attribute must be omitted.
+
+    * compartmentOrder --
+      The compartment order attribute can be used to define
+      a drawing order for compartments. It enables tools to
+      draw compartments in the correct order especially in
+      the case of overlapping compartments.
+      Compartments are only used in PD and AF, and thus
+      this attribute as well.
+      The attribute is of type float, the attribute value
+      has not to be unique. Compartments with higher compartment
+      order are drawn on top. The attribute is optional and should
+      only be used for compartments.
+
+    * mapRef --
+      This attribute is only used on a submap glyph. It is required.
+      Reference to the ID of the map which provides the content of the submap.
+      If no map is available providing the content of the submap an omitted
+      process should be used instead of the submap.
+      Submaps are only used in PD and AF, and thus this attribute as well.
+
+    * tagRef --
+      This attribute is only used on a terminal glyph. It is required.
+      Reference to the ID of a tag on a map providing the content of a submap.
+      The terminal glyph is defined as sub-glyph of this submap.
+      Submaps and therefore terminals are only used in PD and AF, and thus this attribute
+      as well.
+
+    * state --
+      The state element should only be used for state variables.
+      It replaces the label element used for other glyphs.
+      It describes the text to be drawn inside the state variable.
+      A state must have a value, a variable, or both.
+      If it has both, they are rendered as a concatenated string with
+      @ in between.
+
+    * clone --
+      The clone element (which is optional) means the glyph carries a
+      clone marker. It can contain an optional label.
+
+    * callout --
+      The callout element is only used for glyphs with class annotation.
+      It contains the coordinate of the point where the annotation points to,
+      as well as a reference to the element that is pointed to.
+
+    * entity --
+      The entity is only used in activity flow diagrams.
+      It can only be used on a unit of information glyph
+      on a biological activity glyph, where it is compulsory.
+      It is used to indicate the shape of this unit of information.
+
+    * bbox --
+      The bbox element is mandatory and unique: exactly one per
+      glyph.
+      It defines the outer bounding box of the glyph.
+      The actual shape of the glyph can be irregular
+      (for instance in the case of some compartments)
+      In the case of process nodes, the bounding box only concerns the
+      central glyph (square, or circle):
+      the input/output ports are not included, and neither are the lines
+      connecting them to the central glyph.
+
+    * glyph --
+      A glyph element can contain any number of children glyph
+      elements.
+      In practice, this should only happen in the following cases:
+      a compartment with unit of information children,
+      an EPN with states variables and/or unit of information
+      children,
+      a complex, with state variables, unit of info, and/or EPN
+      children.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, class_=None, orientation='horizontal', id=None, compartmentRef=None, compartmentOrder=None, mapRef=None, tagRef=None, label=None, state=None, clone=None, callout=None, entity=None, bbox=None, glyph_member=None, port=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        super(globals().get("glyph"), self).__init__(notes, extension,  **kwargs_)
+        self.class_ = _cast(None, class_)
+        self.class__nsprefix_ = None
+        self.orientation = _cast(None, orientation)
+        self.orientation_nsprefix_ = None
+        self.id = _cast(None, id)
+        self.id_nsprefix_ = None
+        self.compartmentRef = _cast(None, compartmentRef)
+        self.compartmentRef_nsprefix_ = None
+        self.compartmentOrder = _cast(float, compartmentOrder)
+        self.compartmentOrder_nsprefix_ = None
+        self.mapRef = _cast(None, mapRef)
+        self.mapRef_nsprefix_ = None
+        self.tagRef = _cast(None, tagRef)
+        self.tagRef_nsprefix_ = None
+        self.label = label
+        self.label_nsprefix_ = "sbgn"
+        self.state = state
+        self.state_nsprefix_ = None
+        self.clone = clone
+        self.clone_nsprefix_ = None
+        self.callout = callout
+        self.callout_nsprefix_ = None
+        self.entity = entity
+        self.entity_nsprefix_ = None
+        self.bbox = bbox
+        self.bbox_nsprefix_ = "sbgn"
+        if glyph_member is None:
+            self.glyph = []
+        else:
+            self.glyph = glyph_member
+        self.glyph_nsprefix_ = "sbgn"
+        if port is None:
+            self.port = []
+        else:
+            self.port = port
+        self.port_nsprefix_ = "sbgn"
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, glyph)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if glyph.subclass:
+            return glyph.subclass(*args_, **kwargs_)
+        else:
+            return glyph(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_label(self):
+        return self.label
+    def set_label(self, label):
+        self.label = label
+    def get_state(self):
+        return self.state
+    def set_state(self, state):
+        self.state = state
+    def get_clone(self):
+        return self.clone
+    def set_clone(self, clone):
+        self.clone = clone
+    def get_callout(self):
+        return self.callout
+    def set_callout(self, callout):
+        self.callout = callout
+    def get_entity(self):
+        return self.entity
+    def set_entity(self, entity):
+        self.entity = entity
+    def get_bbox(self):
+        return self.bbox
+    def set_bbox(self, bbox):
+        self.bbox = bbox
+    def get_glyph(self):
+        return self.glyph
+    def set_glyph(self, glyph):
+        self.glyph = glyph
+    def add_glyph(self, value):
+        self.glyph.append(value)
+    def insert_glyph_at(self, index, value):
+        self.glyph.insert(index, value)
+    def replace_glyph_at(self, index, value):
+        self.glyph[index] = value
+    def get_port(self):
+        return self.port
+    def set_port(self, port):
+        self.port = port
+    def add_port(self, value):
+        self.port.append(value)
+    def insert_port_at(self, index, value):
+        self.port.insert(index, value)
+    def replace_port_at(self, index, value):
+        self.port[index] = value
+    def get_class(self):
+        return self.class_
+    def set_class(self, class_):
+        self.class_ = class_
+    def get_orientation(self):
+        return self.orientation
+    def set_orientation(self, orientation):
+        self.orientation = orientation
+    def get_id(self):
+        return self.id
+    def set_id(self, id):
+        self.id = id
+    def get_compartmentRef(self):
+        return self.compartmentRef
+    def set_compartmentRef(self, compartmentRef):
+        self.compartmentRef = compartmentRef
+    def get_compartmentOrder(self):
+        return self.compartmentOrder
+    def set_compartmentOrder(self, compartmentOrder):
+        self.compartmentOrder = compartmentOrder
+    def get_mapRef(self):
+        return self.mapRef
+    def set_mapRef(self, mapRef):
+        self.mapRef = mapRef
+    def get_tagRef(self):
+        return self.tagRef
+    def set_tagRef(self, tagRef):
+        self.tagRef = tagRef
+    def validate_classType(self, value):
+        # Validate type classType, a restriction on xsd:string.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['unspecified entity', 'simple chemical', 'macromolecule', 'nucleic acid feature', 'simple chemical multimer', 'macromolecule multimer', 'nucleic acid feature multimer', 'complex', 'complex multimer', 'source and sink', 'perturbation', 'biological activity', 'perturbing agent', 'compartment', 'submap', 'tag', 'terminal', 'process', 'omitted process', 'uncertain process', 'association', 'dissociation', 'phenotype', 'and', 'or', 'not', 'state variable', 'unit of information', 'entity', 'outcome', 'interaction', 'influence target', 'annotation', 'variable value', 'implicit xor', 'delay', 'existence', 'location', 'cardinality', 'observable']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on classType' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def validate_orientationType(self, value):
+        # Validate type orientationType, a restriction on xsd:string.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['horizontal', 'vertical', 'left', 'right', 'up', 'down']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on orientationType' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def _hasContent(self):
+        if (
+            self.label is not None or
+            self.state is not None or
+            self.clone is not None or
+            self.callout is not None or
+            self.entity is not None or
+            self.bbox is not None or
+            self.glyph or
+            self.port or
+            super(glyph, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='glyph', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('glyph')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'glyph':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='glyph')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='glyph', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='glyph'):
+        super(glyph, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='glyph')
+        if self.class_ is not None and 'class_' not in already_processed:
+            already_processed.add('class_')
+            outfile.write(' class=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.class_), input_name='class')), ))
+        if self.orientation != "horizontal" and 'orientation' not in already_processed:
+            already_processed.add('orientation')
+            outfile.write(' orientation=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.orientation), input_name='orientation')), ))
+        if self.id is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            outfile.write(' id=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.id), input_name='id')), ))
+        if self.compartmentRef is not None and 'compartmentRef' not in already_processed:
+            already_processed.add('compartmentRef')
+            outfile.write(' compartmentRef=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.compartmentRef), input_name='compartmentRef')), ))
+        if self.compartmentOrder is not None and 'compartmentOrder' not in already_processed:
+            already_processed.add('compartmentOrder')
+            outfile.write(' compartmentOrder="%s"' % self.gds_format_float(self.compartmentOrder, input_name='compartmentOrder'))
+        if self.mapRef is not None and 'mapRef' not in already_processed:
+            already_processed.add('mapRef')
+            outfile.write(' mapRef=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.mapRef), input_name='mapRef')), ))
+        if self.tagRef is not None and 'tagRef' not in already_processed:
+            already_processed.add('tagRef')
+            outfile.write(' tagRef=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.tagRef), input_name='tagRef')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='glyph', fromsubclass_=False, pretty_print=True):
+        super(glyph, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.label is not None:
+            namespaceprefix_ = self.label_nsprefix_ + ':' if (UseCapturedNS_ and self.label_nsprefix_) else ''
+            self.label.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='label', pretty_print=pretty_print)
+        if self.state is not None:
+            namespaceprefix_ = self.state_nsprefix_ + ':' if (UseCapturedNS_ and self.state_nsprefix_) else ''
+            self.state.export(outfile, level, namespaceprefix_, namespacedef_='', name_='state', pretty_print=pretty_print)
+        if self.clone is not None:
+            namespaceprefix_ = self.clone_nsprefix_ + ':' if (UseCapturedNS_ and self.clone_nsprefix_) else ''
+            self.clone.export(outfile, level, namespaceprefix_, namespacedef_='', name_='clone', pretty_print=pretty_print)
+        if self.callout is not None:
+            namespaceprefix_ = self.callout_nsprefix_ + ':' if (UseCapturedNS_ and self.callout_nsprefix_) else ''
+            self.callout.export(outfile, level, namespaceprefix_, namespacedef_='', name_='callout', pretty_print=pretty_print)
+        if self.entity is not None:
+            namespaceprefix_ = self.entity_nsprefix_ + ':' if (UseCapturedNS_ and self.entity_nsprefix_) else ''
+            self.entity.export(outfile, level, namespaceprefix_, namespacedef_='', name_='entity', pretty_print=pretty_print)
+        if self.bbox is not None:
+            namespaceprefix_ = self.bbox_nsprefix_ + ':' if (UseCapturedNS_ and self.bbox_nsprefix_) else ''
+            self.bbox.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='bbox', pretty_print=pretty_print)
+        for glyph_ in self.glyph:
+            namespaceprefix_ = self.glyph_nsprefix_ + ':' if (UseCapturedNS_ and self.glyph_nsprefix_) else ''
+            glyph_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='glyph', pretty_print=pretty_print)
+        for port_ in self.port:
+            namespaceprefix_ = self.port_nsprefix_ + ':' if (UseCapturedNS_ and self.port_nsprefix_) else ''
+            port_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='port', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('class', node)
+        if value is not None and 'class' not in already_processed:
+            already_processed.add('class')
+            self.class_ = value
+            self.validate_classType(self.class_)    # validate type classType
+        value = find_attr_value_('orientation', node)
+        if value is not None and 'orientation' not in already_processed:
+            already_processed.add('orientation')
+            self.orientation = value
+            self.validate_orientationType(self.orientation)    # validate type orientationType
+        value = find_attr_value_('id', node)
+        if value is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            self.id = value
+        value = find_attr_value_('compartmentRef', node)
+        if value is not None and 'compartmentRef' not in already_processed:
+            already_processed.add('compartmentRef')
+            self.compartmentRef = value
+        value = find_attr_value_('compartmentOrder', node)
+        if value is not None and 'compartmentOrder' not in already_processed:
+            already_processed.add('compartmentOrder')
+            value = self.gds_parse_float(value, node, 'compartmentOrder')
+            self.compartmentOrder = value
+        value = find_attr_value_('mapRef', node)
+        if value is not None and 'mapRef' not in already_processed:
+            already_processed.add('mapRef')
+            self.mapRef = value
+        value = find_attr_value_('tagRef', node)
+        if value is not None and 'tagRef' not in already_processed:
+            already_processed.add('tagRef')
+            self.tagRef = value
+        super(glyph, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'label':
+            obj_ = label.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.label = obj_
+            obj_.original_tagname_ = 'label'
+        elif nodeName_ == 'state':
+            obj_ = stateType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.state = obj_
+            obj_.original_tagname_ = 'state'
+        elif nodeName_ == 'clone':
+            obj_ = cloneType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.clone = obj_
+            obj_.original_tagname_ = 'clone'
+        elif nodeName_ == 'callout':
+            obj_ = calloutType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.callout = obj_
+            obj_.original_tagname_ = 'callout'
+        elif nodeName_ == 'entity':
+            obj_ = entityType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.entity = obj_
+            obj_.original_tagname_ = 'entity'
+        elif nodeName_ == 'bbox':
+            obj_ = bbox.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.bbox = obj_
+            obj_.original_tagname_ = 'bbox'
+        elif nodeName_ == 'glyph':
+            obj_ = glyph.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.glyph.append(obj_)
+            obj_.original_tagname_ = 'glyph'
+        elif nodeName_ == 'port':
+            obj_ = port.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.port.append(obj_)
+            obj_.original_tagname_ = 'port'
+        super(glyph, self)._buildChildren(child_, node, nodeName_, True)
+# end class glyph
+
+
+class arcgroup(SBGNBase):
+    """arcgroup --
+    The arc group describes a set of arcs and glyphs that together have a relation.
+    For example
+    For ER: interaction arcs around an interaction glyph,
+    ...
+    Note that, in spite of the name, an arcgroup contains both arcs and glyphs.
+
+    * class --
+      The class attribute defines the semantic of the arcgroup.
+
+    * glyph --
+      An arcgroup can contain glyphs. For example, in an interaction arcgroup, there
+      must be one interaction glyph.
+
+    * arc --
+      An arcgroup can have multiple arcs. They are all assumed to form a single
+      hyperarc-like structure.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, class_=None, glyph=None, arc=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = "sbgn"
+        super(globals().get("arcgroup"), self).__init__(notes, extension,  **kwargs_)
+        self.class_ = _cast(None, class_)
+        self.class__nsprefix_ = None
+        if glyph is None:
+            self.glyph = []
+        else:
+            self.glyph = glyph
+        self.glyph_nsprefix_ = "sbgn"
+        if arc is None:
+            self.arc = []
+        else:
+            self.arc = arc
+        self.arc_nsprefix_ = "sbgn"
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, arcgroup)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if arcgroup.subclass:
+            return arcgroup.subclass(*args_, **kwargs_)
+        else:
+            return arcgroup(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_glyph(self):
+        return self.glyph
+    def set_glyph(self, glyph):
+        self.glyph = glyph
+    def add_glyph(self, value):
+        self.glyph.append(value)
+    def insert_glyph_at(self, index, value):
+        self.glyph.insert(index, value)
+    def replace_glyph_at(self, index, value):
+        self.glyph[index] = value
+    def get_arc(self):
+        return self.arc
+    def set_arc(self, arc):
+        self.arc = arc
+    def add_arc(self, value):
+        self.arc.append(value)
+    def insert_arc_at(self, index, value):
+        self.arc.insert(index, value)
+    def replace_arc_at(self, index, value):
+        self.arc[index] = value
+    def get_class(self):
+        return self.class_
+    def set_class(self, class_):
+        self.class_ = class_
+    def validate_classType1(self, value):
+        # Validate type classType1, a restriction on xsd:string.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['interaction']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on classType1' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def _hasContent(self):
+        if (
+            self.glyph or
+            self.arc or
+            super(arcgroup, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='arcgroup', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('arcgroup')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'arcgroup':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='arcgroup')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='arcgroup', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='arcgroup'):
+        super(arcgroup, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='arcgroup')
+        if self.class_ is not None and 'class_' not in already_processed:
+            already_processed.add('class_')
+            outfile.write(' class=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.class_), input_name='class')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='arcgroup', fromsubclass_=False, pretty_print=True):
+        super(arcgroup, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        for glyph_ in self.glyph:
+            namespaceprefix_ = self.glyph_nsprefix_ + ':' if (UseCapturedNS_ and self.glyph_nsprefix_) else ''
+            glyph_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='glyph', pretty_print=pretty_print)
+        for arc_ in self.arc:
+            namespaceprefix_ = self.arc_nsprefix_ + ':' if (UseCapturedNS_ and self.arc_nsprefix_) else ''
+            arc_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='arc', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('class', node)
+        if value is not None and 'class' not in already_processed:
+            already_processed.add('class')
+            self.class_ = value
+            self.validate_classType1(self.class_)    # validate type classType1
+        super(arcgroup, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'glyph':
+            obj_ = glyph.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.glyph.append(obj_)
+            obj_.original_tagname_ = 'glyph'
+        elif nodeName_ == 'arc':
+            obj_ = arc.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.arc.append(obj_)
+            obj_.original_tagname_ = 'arc'
+        super(arcgroup, self)._buildChildren(child_, node, nodeName_, True)
+# end class arcgroup
+
+
+class arc(SBGNBase):
+    """arc --
+    The arc element describes an SBGN arc between two SBGN nodes. It contains:
+    For PD: an optional stoichiometry marker,
+    For ER: an optional cardinality marker,
+    zero or more ports (influence targets), and zero or more outcomes,
+    a mandatory source and target (glyph or port),
+    a geometric description of its whole path, from start to end.
+    This path can involve any number of straight lines or quadratic/cubic Bezier
+    curves.
+
+    * class --
+      The class attribute defines the semantic of the arc, and influences:
+      the way that arc should be rendered,
+      the overall syntactic validity of the map.
+      The various classes encompass all possible types of SBGN arcs:
+      production and consumption arcs,
+      all types of modification arcs,
+      logic arcs,
+      equivalence arcs.
+      To express a reversible reaction,
+      use production arcs on both sides of the Process Node.
+
+    * id --
+      The xsd:ID type is an alphanumeric identifier,
+      starting with a letter.
+
+    * source --
+      The source attribute can refer:
+      either to the id of a glyph,
+      or to the id of a port on a glyph.
+
+    * target --
+      The target attribute can refer:
+      either to the id of a glyph,
+      or to the id of a port on a glyph.
+
+    * glyph --
+      In PD, an arc can contain a single optional sub-glyph.
+      This glyph must be a stoichiometry marker
+      (square with a numeric label)
+      In ER, an arc can contain several sub-glyphs.
+      This can be zero or one cardinality glyphs
+      (e.g. cis or trans), plus zero to many
+      outcome glyphs (black dot)
+
+    * port --
+      Ports are only allowed in ER.
+
+    * start --
+      The start element represents the starting point of the arc's path.
+      It is unique and mandatory.
+
+    * next --
+      The next element represents the next point in the arc's path.
+      Between the start and the end of the path, there can be any number
+      (even zero) of next elements (intermediate points). They are read
+      consecutively: start, next, next, ..., next, end.
+      When the path from the previous point to this point is not straight,
+      this element also contains a list of control points
+      (between 1 and 2) describing a Bezier curve (quadratic if 1 control
+      point, cubic if 2) between the previous point and this point.
+
+    * end --
+      The end element represents the ending point of the arc's path.
+      It is unique and mandatory.
+      When the path from the previous point to this point is not straight,
+      this element also contains a list of control points
+      (between 1 and 2) describing a Bezier curve (quadratic if 1 control
+      point, cubic if 2) between the previous point and this point.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = SBGNBase
+    def __init__(self, notes=None, extension=None, class_=None, id=None, source=None, target=None, glyph=None, port=None, start=None, next=None, end=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        super(globals().get("arc"), self).__init__(notes, extension,  **kwargs_)
+        self.class_ = _cast(None, class_)
+        self.class__nsprefix_ = None
+        self.id = _cast(None, id)
+        self.id_nsprefix_ = None
+        self.source = _cast(None, source)
+        self.source_nsprefix_ = None
+        self.target = _cast(None, target)
+        self.target_nsprefix_ = None
+        if glyph is None:
+            self.glyph = []
+        else:
+            self.glyph = glyph
+        self.glyph_nsprefix_ = "sbgn"
+        if port is None:
+            self.port = []
+        else:
+            self.port = port
+        self.port_nsprefix_ = "sbgn"
+        self.start = start
+        self.start_nsprefix_ = None
+        if next is None:
+            self.next = []
+        else:
+            self.next = next
+        self.next_nsprefix_ = None
+        self.end = end
+        self.end_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, arc)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if arc.subclass:
+            return arc.subclass(*args_, **kwargs_)
+        else:
+            return arc(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_glyph(self):
+        return self.glyph
+    def set_glyph(self, glyph):
+        self.glyph = glyph
+    def add_glyph(self, value):
+        self.glyph.append(value)
+    def insert_glyph_at(self, index, value):
+        self.glyph.insert(index, value)
+    def replace_glyph_at(self, index, value):
+        self.glyph[index] = value
+    def get_port(self):
+        return self.port
+    def set_port(self, port):
+        self.port = port
+    def add_port(self, value):
+        self.port.append(value)
+    def insert_port_at(self, index, value):
+        self.port.insert(index, value)
+    def replace_port_at(self, index, value):
+        self.port[index] = value
+    def get_start(self):
+        return self.start
+    def set_start(self, start):
+        self.start = start
+    def get_next(self):
+        return self.next
+    def set_next(self, next):
+        self.next = next
+    def add_next(self, value):
+        self.next.append(value)
+    def insert_next_at(self, index, value):
+        self.next.insert(index, value)
+    def replace_next_at(self, index, value):
+        self.next[index] = value
+    def get_end(self):
+        return self.end
+    def set_end(self, end):
+        self.end = end
+    def get_class(self):
+        return self.class_
+    def set_class(self, class_):
+        self.class_ = class_
+    def get_id(self):
+        return self.id
+    def set_id(self, id):
+        self.id = id
+    def get_source(self):
+        return self.source
+    def set_source(self, source):
+        self.source = source
+    def get_target(self):
+        return self.target
+    def set_target(self, target):
+        self.target = target
+    def validate_classType2(self, value):
+        # Validate type classType2, a restriction on xsd:string.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['production', 'consumption', 'catalysis', 'modulation', 'stimulation', 'inhibition', 'assignment', 'interaction', 'absolute inhibition', 'absolute stimulation', 'positive influence', 'negative influence', 'unknown influence', 'equivalence arc', 'necessary stimulation', 'logic arc']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on classType2' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def _hasContent(self):
+        if (
+            self.glyph or
+            self.port or
+            self.start is not None or
+            self.next or
+            self.end is not None or
+            super(arc, self)._hasContent()
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='arc', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('arc')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'arc':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='arc')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='arc', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='arc'):
+        super(arc, self)._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='arc')
+        if self.class_ is not None and 'class_' not in already_processed:
+            already_processed.add('class_')
+            outfile.write(' class=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.class_), input_name='class')), ))
+        if self.id is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            outfile.write(' id=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.id), input_name='id')), ))
+        if self.source is not None and 'source' not in already_processed:
+            already_processed.add('source')
+            outfile.write(' source=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.source), input_name='source')), ))
+        if self.target is not None and 'target' not in already_processed:
+            already_processed.add('target')
+            outfile.write(' target=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.target), input_name='target')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='arc', fromsubclass_=False, pretty_print=True):
+        super(arc, self)._exportChildren(outfile, level, namespaceprefix_, namespacedef_, name_, True, pretty_print=pretty_print)
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        for glyph_ in self.glyph:
+            namespaceprefix_ = self.glyph_nsprefix_ + ':' if (UseCapturedNS_ and self.glyph_nsprefix_) else ''
+            glyph_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='glyph', pretty_print=pretty_print)
+        for port_ in self.port:
+            namespaceprefix_ = self.port_nsprefix_ + ':' if (UseCapturedNS_ and self.port_nsprefix_) else ''
+            port_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='port', pretty_print=pretty_print)
+        if self.start is not None:
+            namespaceprefix_ = self.start_nsprefix_ + ':' if (UseCapturedNS_ and self.start_nsprefix_) else ''
+            self.start.export(outfile, level, namespaceprefix_, namespacedef_='', name_='start', pretty_print=pretty_print)
+        for next_ in self.next:
+            namespaceprefix_ = self.next_nsprefix_ + ':' if (UseCapturedNS_ and self.next_nsprefix_) else ''
+            next_.export(outfile, level, namespaceprefix_, namespacedef_='', name_='next', pretty_print=pretty_print)
+        if self.end is not None:
+            namespaceprefix_ = self.end_nsprefix_ + ':' if (UseCapturedNS_ and self.end_nsprefix_) else ''
+            self.end.export(outfile, level, namespaceprefix_, namespacedef_='', name_='end', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('class', node)
+        if value is not None and 'class' not in already_processed:
+            already_processed.add('class')
+            self.class_ = value
+            self.validate_classType2(self.class_)    # validate type classType2
+        value = find_attr_value_('id', node)
+        if value is not None and 'id' not in already_processed:
+            already_processed.add('id')
+            self.id = value
+        value = find_attr_value_('source', node)
+        if value is not None and 'source' not in already_processed:
+            already_processed.add('source')
+            self.source = value
+        value = find_attr_value_('target', node)
+        if value is not None and 'target' not in already_processed:
+            already_processed.add('target')
+            self.target = value
+        super(arc, self)._buildAttributes(node, attrs, already_processed)
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'glyph':
+            obj_ = glyph.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.glyph.append(obj_)
+            obj_.original_tagname_ = 'glyph'
+        elif nodeName_ == 'port':
+            obj_ = port.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.port.append(obj_)
+            obj_.original_tagname_ = 'port'
+        elif nodeName_ == 'start':
+            obj_ = startType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.start = obj_
+            obj_.original_tagname_ = 'start'
+        elif nodeName_ == 'next':
+            obj_ = nextType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.next.append(obj_)
+            obj_.original_tagname_ = 'next'
+        elif nodeName_ == 'end':
+            obj_ = endType.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.end = obj_
+            obj_.original_tagname_ = 'end'
+        super(arc, self)._buildChildren(child_, node, nodeName_, True)
+# end class arc
+
+
+class notesType(GeneratedsSuper):
+    """notesType --
+    The notes element stores notes.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, anytypeobjs_=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        if anytypeobjs_ is None:
+            self.anytypeobjs_ = []
+        elif isinstance(anytypeobjs_, list):
+            self.anytypeobjs_ = anytypeobjs_
+        else:
+            self.anytypeobjs_ = [anytypeobjs_]
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, notesType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if notesType.subclass:
+            return notesType.subclass(*args_, **kwargs_)
+        else:
+            return notesType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_anytypeobjs_(self): return self.anytypeobjs_
+    def set_anytypeobjs_(self, anytypeobjs_): self.anytypeobjs_ = anytypeobjs_
+    def add_anytypeobjs_(self, value): self.anytypeobjs_.append(value)
+    def insert_anytypeobjs_(self, index, value): self._anytypeobjs_[index] = value
+    def _hasContent(self):
+        if (
+            self.anytypeobjs_
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='notesType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('notesType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'notesType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='notesType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='notesType', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='notesType'):
+        pass
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='notesType', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if not fromsubclass_:
+            for obj_ in self.anytypeobjs_:
+                showIndent(outfile, level, pretty_print)
+                outfile.write(obj_)
+                outfile.write('\n')
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        pass
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        content_ = self.gds_build_any(child_, 'notesType')
+        self.add_anytypeobjs_(content_)
+# end class notesType
+
+
+class extensionType(GeneratedsSuper):
+    """extensionType --
+    The extension element stores extension information like
+    render information, metadata or annotations.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, anytypeobjs_=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        if anytypeobjs_ is None:
+            self.anytypeobjs_ = []
+        elif isinstance(anytypeobjs_, list):
+            self.anytypeobjs_ = anytypeobjs_
+        else:
+            self.anytypeobjs_ = [anytypeobjs_]
+
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, extensionType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if extensionType.subclass:
+            return extensionType.subclass(*args_, **kwargs_)
+        else:
+            return extensionType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_anytypeobjs_(self): return self.anytypeobjs_
+    def set_anytypeobjs_(self, anytypeobjs_): self.anytypeobjs_ = anytypeobjs_
+    def add_anytypeobjs_(self, value): self.anytypeobjs_.append(value)
+    def insert_anytypeobjs_(self, index, value): self._anytypeobjs_[index] = value
+    def _hasContent(self):
+        if (
+            self.anytypeobjs_
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='extensionType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('extensionType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'extensionType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='extensionType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='extensionType', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='extensionType'):
+        pass
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3" xmlns:None="http://sbgn.org/libsbgn/0.3" ', name_='extensionType', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if not fromsubclass_:
+            for obj_ in self.anytypeobjs_:
+                showIndent(outfile, level, pretty_print)
+                outfile.write(obj_)
+                outfile.write('\n')
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        pass
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        content_ = self.gds_build_any(child_, 'extensionType')
+        self.add_anytypeobjs_(content_)
+# end class extensionType
+
+
+class stateType(GeneratedsSuper):
+    """stateType --
+    The state element should only be used for state variables.
+    It replaces the label element used for other glyphs.
+    It describes the text to be drawn inside the state variable.
+    A state must have a value, a variable, or both.
+    If it has both, they are rendered as a concatenated string with
+    @ in between.
+
+    * value --
+      The value attribute represents the state of the
+      variable. It can be:
+      either from a predefined set of string
+      (P, S, etc.) which correspond to specific
+      SBO terms (cf. SBGN specs),
+      or any arbitrary string.
+
+    * variable --
+      The variable attribute describes the site where the
+      modification described by the value attribute occurs.
+      It is:
+      optional when there is only one state variable
+      on the parent EPN,
+      required when there is more than one state
+      variable the parent EPN.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, value=None, variable=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.value = _cast(None, value)
+        self.value_nsprefix_ = None
+        self.variable = _cast(None, variable)
+        self.variable_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, stateType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if stateType.subclass:
+            return stateType.subclass(*args_, **kwargs_)
+        else:
+            return stateType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_value(self):
+        return self.value
+    def set_value(self, value):
+        self.value = value
+    def get_variable(self):
+        return self.variable
+    def set_variable(self, variable):
+        self.variable = variable
+    def _hasContent(self):
+        if (
+
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='stateType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('stateType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'stateType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='stateType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='stateType', pretty_print=pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='stateType'):
+        if self.value is not None and 'value' not in already_processed:
+            already_processed.add('value')
+            outfile.write(' value=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.value), input_name='value')), ))
+        if self.variable is not None and 'variable' not in already_processed:
+            already_processed.add('variable')
+            outfile.write(' variable=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.variable), input_name='variable')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='stateType', fromsubclass_=False, pretty_print=True):
+        pass
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('value', node)
+        if value is not None and 'value' not in already_processed:
+            already_processed.add('value')
+            self.value = value
+        value = find_attr_value_('variable', node)
+        if value is not None and 'variable' not in already_processed:
+            already_processed.add('variable')
+            self.variable = value
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        pass
+# end class stateType
+
+
+class cloneType(GeneratedsSuper):
+    """cloneType --
+    The clone element (which is optional) means the glyph carries a
+    clone marker. It can contain an optional label.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, label=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.label = label
+        self.label_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, cloneType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if cloneType.subclass:
+            return cloneType.subclass(*args_, **kwargs_)
+        else:
+            return cloneType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_label(self):
+        return self.label
+    def set_label(self, label):
+        self.label = label
+    def _hasContent(self):
+        if (
+            self.label is not None
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='cloneType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('cloneType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'cloneType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='cloneType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='cloneType', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='cloneType'):
+        pass
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='cloneType', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.label is not None:
+            namespaceprefix_ = self.label_nsprefix_ + ':' if (UseCapturedNS_ and self.label_nsprefix_) else ''
+            self.label.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='label', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        pass
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'label':
+            obj_ = label.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.label = obj_
+            obj_.original_tagname_ = 'label'
+# end class cloneType
+
+
+class calloutType(GeneratedsSuper):
+    """calloutType --
+    The callout element is only used for glyphs with class annotation.
+    It contains the coordinate of the point where the annotation points to,
+    as well as a reference to the element that is pointed to.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, target=None, point=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.target = _cast(None, target)
+        self.target_nsprefix_ = None
+        self.point = point
+        self.point_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, calloutType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if calloutType.subclass:
+            return calloutType.subclass(*args_, **kwargs_)
+        else:
+            return calloutType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_point(self):
+        return self.point
+    def set_point(self, point):
+        self.point = point
+    def get_target(self):
+        return self.target
+    def set_target(self, target):
+        self.target = target
+    def _hasContent(self):
+        if (
+            self.point is not None
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='calloutType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('calloutType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'calloutType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='calloutType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='calloutType', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='calloutType'):
+        if self.target is not None and 'target' not in already_processed:
+            already_processed.add('target')
+            outfile.write(' target=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.target), input_name='target')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='calloutType', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.point is not None:
+            namespaceprefix_ = self.point_nsprefix_ + ':' if (UseCapturedNS_ and self.point_nsprefix_) else ''
+            self.point.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='point', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('target', node)
+        if value is not None and 'target' not in already_processed:
+            already_processed.add('target')
+            self.target = value
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'point':
+            obj_ = point.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.point = obj_
+            obj_.original_tagname_ = 'point'
+# end class calloutType
+
+
+class entityType(GeneratedsSuper):
+    """entityType --
+    The entity is only used in activity flow diagrams.
+    It can only be used on a unit of information glyph
+    on a biological activity glyph, where it is compulsory.
+    It is used to indicate the shape of this unit of information.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, name=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.name = _cast(None, name)
+        self.name_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, entityType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if entityType.subclass:
+            return entityType.subclass(*args_, **kwargs_)
+        else:
+            return entityType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_name(self):
+        return self.name
+    def set_name(self, name):
+        self.name = name
+    def validate_nameType(self, value):
+        # Validate type nameType, a restriction on xsd:string.
+        if value is not None and Validate_simpletypes_ and self.gds_collector_ is not None:
+            if not isinstance(value, str):
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s is not of the correct base simple type (str)' % {"value": value, "lineno": lineno, })
+                return False
+            value = value
+            enumerations = ['unspecified entity', 'simple chemical', 'macromolecule', 'nucleic acid feature', 'complex', 'perturbation']
+            if value not in enumerations:
+                lineno = self.gds_get_node_lineno_()
+                self.gds_collector_.add_message('Value "%(value)s"%(lineno)s does not match xsd enumeration restriction on nameType' % {"value" : encode_str_2_3(value), "lineno": lineno} )
+                result = False
+    def _hasContent(self):
+        if (
+
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='entityType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('entityType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'entityType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='entityType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='entityType', pretty_print=pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='entityType'):
+        if self.name is not None and 'name' not in already_processed:
+            already_processed.add('name')
+            outfile.write(' name=%s' % (self.gds_encode(self.gds_format_string(quote_attrib(self.name), input_name='name')), ))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='entityType', fromsubclass_=False, pretty_print=True):
+        pass
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('name', node)
+        if value is not None and 'name' not in already_processed:
+            already_processed.add('name')
+            self.name = value
+            self.validate_nameType(self.name)    # validate type nameType
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        pass
+# end class entityType
+
+
+class startType(GeneratedsSuper):
+    """startType --
+    The start element represents the starting point of the arc's path.
+    It is unique and mandatory.
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, x=None, y=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.x = _cast(float, x)
+        self.x_nsprefix_ = None
+        self.y = _cast(float, y)
+        self.y_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, startType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if startType.subclass:
+            return startType.subclass(*args_, **kwargs_)
+        else:
+            return startType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_x(self):
+        return self.x
+    def set_x(self, x):
+        self.x = x
+    def get_y(self):
+        return self.y
+    def set_y(self, y):
+        self.y = y
+    def _hasContent(self):
+        if (
+
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='startType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('startType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'startType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='startType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='startType', pretty_print=pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='startType'):
+        if self.x is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            outfile.write(' x="%s"' % self.gds_format_float(self.x, input_name='x'))
+        if self.y is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            outfile.write(' y="%s"' % self.gds_format_float(self.y, input_name='y'))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='startType', fromsubclass_=False, pretty_print=True):
+        pass
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('x', node)
+        if value is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            value = self.gds_parse_float(value, node, 'x')
+            self.x = value
+        value = find_attr_value_('y', node)
+        if value is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            value = self.gds_parse_float(value, node, 'y')
+            self.y = value
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        pass
+# end class startType
+
+
+class nextType(GeneratedsSuper):
+    """nextType --
+    The next element represents the next point in the arc's path.
+    Between the start and the end of the path, there can be any number
+    (even zero) of next elements (intermediate points). They are read
+    consecutively: start, next, next, ..., next, end.
+    When the path from the previous point to this point is not straight,
+    this element also contains a list of control points
+    (between 1 and 2) describing a Bezier curve (quadratic if 1 control
+    point, cubic if 2) between the previous point and this point.
+    List of control points, used when the path describes a
+    curve.
+    The number of points describes the degree of the Bezier
+    curve: linear (0), quadratic (1) or cubic (2)
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, x=None, y=None, point=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.x = _cast(float, x)
+        self.x_nsprefix_ = None
+        self.y = _cast(float, y)
+        self.y_nsprefix_ = None
+        if point is None:
+            self.point = []
+        else:
+            self.point = point
+        self.point_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, nextType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if nextType.subclass:
+            return nextType.subclass(*args_, **kwargs_)
+        else:
+            return nextType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_point(self):
+        return self.point
+    def set_point(self, point):
+        self.point = point
+    def add_point(self, value):
+        self.point.append(value)
+    def insert_point_at(self, index, value):
+        self.point.insert(index, value)
+    def replace_point_at(self, index, value):
+        self.point[index] = value
+    def get_x(self):
+        return self.x
+    def set_x(self, x):
+        self.x = x
+    def get_y(self):
+        return self.y
+    def set_y(self, y):
+        self.y = y
+    def _hasContent(self):
+        if (
+            self.point
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='nextType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('nextType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'nextType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='nextType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='nextType', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='nextType'):
+        if self.x is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            outfile.write(' x="%s"' % self.gds_format_float(self.x, input_name='x'))
+        if self.y is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            outfile.write(' y="%s"' % self.gds_format_float(self.y, input_name='y'))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='nextType', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        for point_ in self.point:
+            namespaceprefix_ = self.point_nsprefix_ + ':' if (UseCapturedNS_ and self.point_nsprefix_) else ''
+            point_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='point', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('x', node)
+        if value is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            value = self.gds_parse_float(value, node, 'x')
+            self.x = value
+        value = find_attr_value_('y', node)
+        if value is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            value = self.gds_parse_float(value, node, 'y')
+            self.y = value
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'point':
+            obj_ = point.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.point.append(obj_)
+            obj_.original_tagname_ = 'point'
+# end class nextType
+
+
+class endType(GeneratedsSuper):
+    """endType --
+    The end element represents the ending point of the arc's path.
+    It is unique and mandatory.
+    When the path from the previous point to this point is not straight,
+    this element also contains a list of control points
+    (between 1 and 2) describing a Bezier curve (quadratic if 1 control
+    point, cubic if 2) between the previous point and this point.
+    List of control points, used when the path describes a
+    curve.
+    The number of points describes the degree of the Bezier
+    curve: linear (0), quadratic (1) or cubic (2)
+
+    """
+    __hash__ = GeneratedsSuper.__hash__
+    subclass = None
+    superclass = None
+    def __init__(self, x=None, y=None, point=None, gds_collector_=None, **kwargs_):
+        self.gds_collector_ = gds_collector_
+        self.gds_elementtree_node_ = None
+        self.original_tagname_ = None
+        self.parent_object_ = kwargs_.get('parent_object_')
+        self.ns_prefix_ = None
+        self.x = _cast(float, x)
+        self.x_nsprefix_ = None
+        self.y = _cast(float, y)
+        self.y_nsprefix_ = None
+        if point is None:
+            self.point = []
+        else:
+            self.point = point
+        self.point_nsprefix_ = None
+    def factory(*args_, **kwargs_):
+        if CurrentSubclassModule_ is not None:
+            subclass = getSubclassFromModule_(
+                CurrentSubclassModule_, endType)
+            if subclass is not None:
+                return subclass(*args_, **kwargs_)
+        if endType.subclass:
+            return endType.subclass(*args_, **kwargs_)
+        else:
+            return endType(*args_, **kwargs_)
+    factory = staticmethod(factory)
+    def get_ns_prefix_(self):
+        return self.ns_prefix_
+    def set_ns_prefix_(self, ns_prefix):
+        self.ns_prefix_ = ns_prefix
+    def get_point(self):
+        return self.point
+    def set_point(self, point):
+        self.point = point
+    def add_point(self, value):
+        self.point.append(value)
+    def insert_point_at(self, index, value):
+        self.point.insert(index, value)
+    def replace_point_at(self, index, value):
+        self.point[index] = value
+    def get_x(self):
+        return self.x
+    def set_x(self, x):
+        self.x = x
+    def get_y(self):
+        return self.y
+    def set_y(self, y):
+        self.y = y
+    def _hasContent(self):
+        if (
+            self.point
+        ):
+            return True
+        else:
+            return False
+    def export(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='endType', pretty_print=True):
+        imported_ns_def_ = GenerateDSNamespaceDefs_.get('endType')
+        if imported_ns_def_ is not None:
+            namespacedef_ = imported_ns_def_
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        if self.original_tagname_ is not None and name_ == 'endType':
+            name_ = self.original_tagname_
+        if UseCapturedNS_ and self.ns_prefix_:
+            namespaceprefix_ = self.ns_prefix_ + ':'
+        showIndent(outfile, level, pretty_print)
+        outfile.write('<%s%s%s' % (namespaceprefix_, name_, namespacedef_ and ' ' + namespacedef_ or '', ))
+        already_processed = set()
+        self._exportAttributes(outfile, level, already_processed, namespaceprefix_, name_='endType')
+        if self._hasContent():
+            outfile.write('>%s' % (eol_, ))
+            self._exportChildren(outfile, level + 1, namespaceprefix_, namespacedef_, name_='endType', pretty_print=pretty_print)
+            showIndent(outfile, level, pretty_print)
+            outfile.write('</%s%s>%s' % (namespaceprefix_, name_, eol_))
+        else:
+            outfile.write('/>%s' % (eol_, ))
+    def _exportAttributes(self, outfile, level, already_processed, namespaceprefix_='', name_='endType'):
+        if self.x is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            outfile.write(' x="%s"' % self.gds_format_float(self.x, input_name='x'))
+        if self.y is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            outfile.write(' y="%s"' % self.gds_format_float(self.y, input_name='y'))
+    def _exportChildren(self, outfile, level, namespaceprefix_='', namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"', name_='endType', fromsubclass_=False, pretty_print=True):
+        if pretty_print:
+            eol_ = '\n'
+        else:
+            eol_ = ''
+        for point_ in self.point:
+            namespaceprefix_ = self.point_nsprefix_ + ':' if (UseCapturedNS_ and self.point_nsprefix_) else ''
+            point_.export(outfile, level, namespaceprefix_='sbgn:', namespacedef_='', name_='point', pretty_print=pretty_print)
+    def build(self, node, gds_collector_=None):
+        self.gds_collector_ = gds_collector_
+        if SaveElementTreeNode:
+            self.gds_elementtree_node_ = node
+        already_processed = set()
+        self.ns_prefix_ = node.prefix
+        self._buildAttributes(node, node.attrib, already_processed)
+        for child in node:
+            nodeName_ = Tag_pattern_.match(child.tag).groups()[-1]
+            self._buildChildren(child, node, nodeName_, gds_collector_=gds_collector_)
+        return self
+    def _buildAttributes(self, node, attrs, already_processed):
+        value = find_attr_value_('x', node)
+        if value is not None and 'x' not in already_processed:
+            already_processed.add('x')
+            value = self.gds_parse_float(value, node, 'x')
+            self.x = value
+        value = find_attr_value_('y', node)
+        if value is not None and 'y' not in already_processed:
+            already_processed.add('y')
+            value = self.gds_parse_float(value, node, 'y')
+            self.y = value
+    def _buildChildren(self, child_, node, nodeName_, fromsubclass_=False, gds_collector_=None):
+        if nodeName_ == 'point':
+            obj_ = point.factory(parent_object_=self)
+            obj_.build(child_, gds_collector_=gds_collector_)
+            self.point.append(obj_)
+            obj_.original_tagname_ = 'point'
+# end class endType
+
+
+GDSClassesMapping = {
+}
+
+
+USAGE_TEXT = """
+Usage: python <Parser>.py [ -s ] <in_xml_file>
+"""
+
+
+def usage():
+    print(USAGE_TEXT)
+    sys.exit(1)
+
+
+def get_root_tag(node):
+    tag = Tag_pattern_.match(node.tag).groups()[-1]
+    rootClass = GDSClassesMapping.get(tag)
+    if rootClass is None:
+        rootClass = globals().get(tag)
+    return tag, rootClass
+
+
+def get_required_ns_prefix_defs(rootNode):
+    '''Get all name space prefix definitions required in this XML doc.
+    Return a dictionary of definitions and a char string of definitions.
+    '''
+    nsmap = {
+        prefix: uri
+        for node in rootNode.iter()
+        for (prefix, uri) in node.nsmap.items()
+        if prefix is not None
+    }
+    namespacedefs = ' '.join([
+        'xmlns:{}="{}"'.format(prefix, uri)
+        for prefix, uri in nsmap.items()
+    ])
+    return nsmap, namespacedefs
+
+
+def parse(inFileName, silence=False, print_warnings=True):
+    global CapturedNsmap_
+    gds_collector = GdsCollector_()
+    parser = None
+    doc = parsexml_(inFileName, parser)
+    rootNode = doc.getroot()
+    rootTag, rootClass = get_root_tag(rootNode)
+    if rootClass is None:
+        rootTag = 'SBGNBase'
+        rootClass = SBGNBase
+    rootObj = rootClass.factory()
+    rootObj.build(rootNode, gds_collector_=gds_collector)
+    CapturedNsmap_, namespacedefs = get_required_ns_prefix_defs(rootNode)
+    if not SaveElementTreeNode:
+        doc = None
+        rootNode = None
+    if not silence:
+        sys.stdout.write('<?xml version="1.0" ?>\n')
+        rootObj.export(
+            sys.stdout, 0, name_=rootTag,
+            namespacedef_=namespacedefs,
+            pretty_print=True)
+    if print_warnings and len(gds_collector.get_messages()) > 0:
+        separator = ('-' * 50) + '\n'
+        sys.stderr.write(separator)
+        sys.stderr.write('----- Warnings -- count: {} -----\n'.format(
+            len(gds_collector.get_messages()), ))
+        gds_collector.write_messages(sys.stderr)
+        sys.stderr.write(separator)
+    return rootObj
+
+
+def parseEtree(inFileName, silence=False, print_warnings=True,
+               mapping=None, nsmap=None):
+    parser = None
+    doc = parsexml_(inFileName, parser)
+    gds_collector = GdsCollector_()
+    rootNode = doc.getroot()
+    rootTag, rootClass = get_root_tag(rootNode)
+    if rootClass is None:
+        rootTag = 'SBGNBase'
+        rootClass = SBGNBase
+    rootObj = rootClass.factory()
+    rootObj.build(rootNode, gds_collector_=gds_collector)
+    # Enable Python to collect the space used by the DOM.
+    if mapping is None:
+        mapping = {}
+    rootElement = rootObj.to_etree(
+        None, name_=rootTag, mapping_=mapping, nsmap_=nsmap)
+    reverse_mapping = rootObj.gds_reverse_node_mapping(mapping)
+    if not SaveElementTreeNode:
+        doc = None
+        rootNode = None
+    if not silence:
+        content = etree_.tostring(
+            rootElement, pretty_print=True,
+            xml_declaration=True, encoding="utf-8")
+        sys.stdout.write(str(content))
+        sys.stdout.write('\n')
+    if print_warnings and len(gds_collector.get_messages()) > 0:
+        separator = ('-' * 50) + '\n'
+        sys.stderr.write(separator)
+        sys.stderr.write('----- Warnings -- count: {} -----\n'.format(
+            len(gds_collector.get_messages()), ))
+        gds_collector.write_messages(sys.stderr)
+        sys.stderr.write(separator)
+    return rootObj, rootElement, mapping, reverse_mapping
+
+
+def parseString(inString, silence=False, print_warnings=True):
+    '''Parse a string, create the object tree, and export it.
+
+    Arguments:
+    - inString -- A string.  This XML fragment should not start
+      with an XML declaration containing an encoding.
+    - silence -- A boolean.  If False, export the object.
+    Returns -- The root object in the tree.
+    '''
+    parser = None
+    rootNode= parsexmlstring_(inString, parser)
+    gds_collector = GdsCollector_()
+    rootTag, rootClass = get_root_tag(rootNode)
+    if rootClass is None:
+        rootTag = 'SBGNBase'
+        rootClass = SBGNBase
+    rootObj = rootClass.factory()
+    rootObj.build(rootNode, gds_collector_=gds_collector)
+    if not SaveElementTreeNode:
+        rootNode = None
+    if not silence:
+        sys.stdout.write('<?xml version="1.0" ?>\n')
+        rootObj.export(
+            sys.stdout, 0, name_=rootTag,
+            namespacedef_='xmlns:sbgn="http://sbgn.org/libsbgn/0.3"')
+    if print_warnings and len(gds_collector.get_messages()) > 0:
+        separator = ('-' * 50) + '\n'
+        sys.stderr.write(separator)
+        sys.stderr.write('----- Warnings -- count: {} -----\n'.format(
+            len(gds_collector.get_messages()), ))
+        gds_collector.write_messages(sys.stderr)
+        sys.stderr.write(separator)
+    return rootObj
+
+
+def parseLiteral(inFileName, silence=False, print_warnings=True):
+    parser = None
+    doc = parsexml_(inFileName, parser)
+    gds_collector = GdsCollector_()
+    rootNode = doc.getroot()
+    rootTag, rootClass = get_root_tag(rootNode)
+    if rootClass is None:
+        rootTag = 'SBGNBase'
+        rootClass = SBGNBase
+    rootObj = rootClass.factory()
+    rootObj.build(rootNode, gds_collector_=gds_collector)
+    # Enable Python to collect the space used by the DOM.
+    if not SaveElementTreeNode:
+        doc = None
+        rootNode = None
+    if not silence:
+        sys.stdout.write('#from libsbgn import *\n\n')
+        sys.stdout.write('import libsbgn as model_\n\n')
+        sys.stdout.write('rootObj = model_.rootClass(\n')
+        rootObj.exportLiteral(sys.stdout, 0, name_=rootTag)
+        sys.stdout.write(')\n')
+    if print_warnings and len(gds_collector.get_messages()) > 0:
+        separator = ('-' * 50) + '\n'
+        sys.stderr.write(separator)
+        sys.stderr.write('----- Warnings -- count: {} -----\n'.format(
+            len(gds_collector.get_messages()), ))
+        gds_collector.write_messages(sys.stderr)
+        sys.stderr.write(separator)
+    return rootObj
+
+
+RenameMappings_ = {
+}
+
+#
+# Mapping of namespaces to types defined in them
+# and the file in which each is defined.
+# simpleTypes are marked "ST" and complexTypes "CT".
+NamespaceToDefMappings_ = {'http://sbgn.org/libsbgn/0.3': [('SBGNBase',
+                                  '../neo2sbgnml/libsbgn-0.3.xsd',
+                                  'CT')]}
+
+__all__ = [
+    "SBGNBase",
+    "arc",
+    "arcgroup",
+    "bbox",
+    "calloutType",
+    "cloneType",
+    "endType",
+    "entityType",
+    "extensionType",
+    "glyph",
+    "label",
+    "map",
+    "nextType",
+    "notesType",
+    "point",
+    "port",
+    "sbgn",
+    "startType",
+    "stateType"
+]
