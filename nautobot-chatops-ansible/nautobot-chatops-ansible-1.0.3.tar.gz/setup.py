@@ -1,0 +1,36 @@
+# -*- coding: utf-8 -*-
+from setuptools import setup
+
+packages = \
+['nautobot_chatops_ansible', 'nautobot_chatops_ansible.tests']
+
+package_data = \
+{'': ['*'],
+ 'nautobot_chatops_ansible': ['static/nautobot_ansible/*'],
+ 'nautobot_chatops_ansible.tests': ['fixtures/*']}
+
+install_requires = \
+['nautobot-chatops>=1.1.0,<2.0.0', 'requests>=2.25.1,<3.0.0']
+
+entry_points = \
+{'nautobot.workers': ['ansible = nautobot_chatops_ansible.worker:ansible']}
+
+setup_kwargs = {
+    'name': 'nautobot-chatops-ansible',
+    'version': '1.0.3',
+    'description': 'Nautobot Chatpops Ansible Tower integration',
+    'long_description': '# nautobot-plugin-chatops-ansible\n\nA plugin for [Nautobot](https://github.com/nautobot/nautobot) [Chatops Plugin](https://github.com/nautobot/nautobot-plugin-chatops/)\n\n## Build Status\n\n| Branch      | Status |\n|-------------|------------|\n| **main** | [![Build Status](https://www.travis-ci.com/nautobot/nautobot-plugin-chatops-ansible.svg?token=D7kytCzfCypoGoueSBqJ&branch=main)](https://www.travis-ci.com/github/nautobot/nautobot-plugin-chatops-ansible) |\n| **develop** | [![Build Status](https://www.travis-ci.com/nautobot/nautobot-plugin-chatops-ansible.svg?token=D7kytCzfCypoGoueSBqJ&branch=develop)](https://www.travis-ci.com/github/nautobot/nautobot-plugin-chatops-ansible) |\n\n## Summary\n\nChatbot that allows users to communicate directly with Ansible AWX/Tower from various chat platforms.\n\nThe Nautobot Chatops Ansible plugin extends the capabilities of the Nautobot Chatops plugin to include a new command available to the plugin. This is done by registering to the Python entry point in Nautobot Plugin Chatops, that provides functionality to the code written to interact with Ansible. This plugin introduces the following sub commands to the `ansible` command:\n\n* get_dashboard\n* get_inventory\n* get_projects\n* get_job_templates\n* run_job_template\n* get_jobs\n\n### Get Dashboard\n\nThe dashboard command provides an Ansible Tower/AWX status dashboard. This gives a summary of:\n* How many hosts are on the Tower system\n* How many failed hosts (last job is failed)\n* Total number of inventories\n* How many inventories have failed\n* How many project sync failures have occurred\n\n### Get Inventory\n\nThe inventory sub-command provides inventories available and the details of those inventories.\n\n### Get Projects\n\nGet projects will gather information about the projects available within the Ansible Tower/AWX instance. Information such as the name, description, SCM URL, and SCM branch are provided.\n\n### Get Job Templates\n\nThis gathers the information about the defined job templates on the Ansible Tower/AWX instance. It will provide the name, description, project, and the associated inventory with the Job Template configured.\n\n### Run Job Template\n\nThe natural progression of gathering job templates is then to execute a particular job template. Executes a Job Template that does not require extra vars or surveys to be completed. The Job ID for the executed job template will be provided via a chat response.\n\n### Get Jobs\n\nThe get jobs sub command will ask Tower for the last number of jobs, with a default count of the last 10 jobs. This will give the status of the jobs including:\n\n* Job ID\n* Name of the Job\n* User that launched the job\n* Created\n* Finish time\n* Status of the job\n\n## Installation\n\nThe plugin is available as a Python package in PyPI and can be installed with pip\n\n```shell\npip install git+https://github.com/nautobot/nautobot-plugin-chatops-ansible.git\n```\n\nThis ChatOps Plugin to Nautobot ChatOps Plugin requires the following list of environment variables to be added into the environment.\n\n- `NAUTOBOT_TOWER_URI`: Ansible Tower HTTP URI\n- `NAUTOBOT_TOWER_USERNAME`: Ansible Tower username\n- `NAUTOBOT_TOWER_PASSWORD`: Ansible Tower password\n\nOnce you have updated your environment file, restart both nautobot and nautobot-worker\n\n```\n$ sudo systemctl restart nautobot nautobot-worker\n```\n\n## Usage\n\n### Command setup\n\nAdd a slash command to Slack called `/ansible`.\nSee the [nautobot-chatops installation guide](https://github.com/nautobot/nautobot-plugin-chatops/blob/develop/docs/chat_setup.md) for instructions on adding a slash command to your Slack channel.\n\nYou may need to adjust your [Access Grants in Nautobot](https://github.com/nautobot/nautobot-plugin-chatops/blob/develop/docs/chat_setup.md#grant-access-to-the-chatbot) depending on your security requirements.\n\n## Contributing\n\nPull requests are welcomed and automatically built and tested against multiple version of Python and multiple version of Nautobot through TravisCI.\n\nThe project is packaged with a light development environment based on `docker-compose` to help with the local development of the project and to run the tests within TravisCI.\n\nThe project is following Network to Code software development guideline and is leveraging:\n\n- Black, Pylint, Bandit and pydocstyle for Python linting and formatting.\n- Django unit test to ensure the plugin is working properly.\n\n### CLI Helper Commands\n\nThe project is coming with a CLI helper based on [invoke](http://www.pyinvoke.org/) to help setup the development environment. The commands are listed below in 3 categories `dev environment`, `utility` and `testing`.\n\nEach command can be executed with `invoke <command>`. All commands support the arguments `--nautobot-ver` and `--python-ver` if you want to manually define the version of Python and Nautobot to use. Each command also has its own help `invoke <command> --help`\n\n#### Local dev environment\n\n```no-highlight\n  build            Build all docker images.\n  debug            Start Nautobot and its dependencies in debug mode.\n  destroy          Destroy all containers and volumes.\n  start            Start Nautobot and its dependencies in detached mode.\n  stop             Stop Nautobot and its dependencies.\n```\n\n#### Utility\n\n```no-highlight\n  cli              Launch a bash shell inside the running Nautobot container.\n  create-user      Create a new user in django (default: admin), will prompt for password.\n  makemigrations   Run Make Migration in Django.\n  nbshell          Launch a nbshell session.\n```\n\n#### Testing\n\n```no-highlight\n  tests            Run all tests.\n  pydocstyle       Run pydocstyle to validate docstring formatting adheres to NTC defined standards.\n  bandit           Run bandit to validate basic static code security analysis.\n  black            Run black to check that Python files adhere to its style standards.\n  unittest         Run Django unit tests for the plugin.\n```\n\n## Questions\n\nFor any questions or comments, feel free to swing by the [Network to Code slack channel](https://networktocode.slack.com/) (channel #networktocode).\nSign up [here](http://slack.networktocode.com/)\n',
+    'author': 'Network to Code, LLC',
+    'author_email': 'opensource@networktocode.com',
+    'maintainer': None,
+    'maintainer_email': None,
+    'url': 'https://github.com/nautobot/nautobot-plugin-chatops-ansible',
+    'packages': packages,
+    'package_data': package_data,
+    'install_requires': install_requires,
+    'entry_points': entry_points,
+    'python_requires': '>=3.6,<4.0',
+}
+
+
+setup(**setup_kwargs)
