@@ -1,0 +1,480 @@
+# **************************************************************************
+# *
+# * Authors:     J.M. De la Rosa Trevin (delarosatrevin@scilifelab.se) [1]
+# *
+# * [1] SciLifeLab, Stockholm University
+# *
+# * This program is free software: you can redistribute it and/or modify
+# * it under the terms of the GNU General Public License as published by
+# * the Free Software Foundation, either version 3 of the License, or
+# * (at your option) any later version.
+# *
+# * This program is distributed in the hope that it will be useful,
+# * but WITHOUT ANY WARRANTY; without even the implied warranty of
+# * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# * GNU General Public License for more details.
+# *
+# * You should have received a copy of the GNU General Public License
+# * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# *
+# *  All comments concerning this program package may be sent to the
+# *  e-mail address 'scipion@cnb.csic.es'
+# *
+# **************************************************************************
+import os
+import tkinter as tk
+import tkinter.font as tkFont
+import queue
+
+from pyworkflow.object import Object
+import pyworkflow as pw
+from pyworkflow.utils import Message, Color, Icon
+
+from .widgets import Button
+
+# --------------- GUI CONFIGURATION parameters -----------------------
+# TODO: read font size and name from config file
+FONT_ITALIC = 'fontItalic'
+FONT_NORMAL = 'fontNormal'
+FONT_BOLD = 'fontBold'
+FONT_BIG = 'fontBig'
+cfgFontName = pw.Config.SCIPION_FONT_NAME
+cfgFontSize = pw.Config.SCIPION_FONT_SIZE
+cfgFontBigSize = cfgFontSize + 8
+# TextColor
+cfgCitationTextColor = "dark olive green"
+cfgLabelTextColor = "black"
+cfgSectionTextColor = "blue4"
+# Background Color
+cfgBgColor = "light grey"
+cfgLabelBgColor = "white"
+cfgHighlightBgColor = cfgBgColor
+cfgButtonFgColor = "white"
+cfgButtonActiveFgColor = "white"
+cfgButtonBgColor = Color.RED_COLOR
+cfgButtonActiveBgColor = "#A60C0C"
+cfgEntryBgColor = "lemon chiffon"
+cfgExpertLabelBgColor = "light salmon"
+cfgSectionBgColor = cfgButtonBgColor
+# Color
+cfgListSelectColor = "DeepSkyBlue4"
+cfgBooleanSelectColor = "white"
+cfgButtonSelectColor = "DeepSkyBlue2"
+# Dimensions limits
+cfgMaxHeight = 650
+cfgMaxWidth = 800
+cfgMaxFontSize = 14
+cfgMinFontSize = 6
+cfgWrapLenght = cfgMaxWidth - 50
+
+
+class Config(Object):
+    pass
+
+
+def saveConfig(filename):
+    from pyworkflow.mapper import SqliteMapper
+    from pyworkflow.object import String, Integer
+
+    mapper = SqliteMapper(filename)
+    o = Config()
+    for k, v in globals().items():
+        if k.startswith('cfg'):
+            if type(v) is str:
+                value = String(v)
+            else:
+                value = Integer(v)
+            setattr(o, k, value)
+    mapper.insert(o)
+    mapper.commit()
+
+
+# --------------- FONT related variables and functions  -----------------------
+def setFont(fontKey, update=False, **opts):
+    """Register a tkFont and store it in a globals of this module
+    this method should be called only after a tk.Tk() windows has been
+    created."""
+    if not hasFont(fontKey) or update:
+        globals()[fontKey] = tkFont.Font(**opts)
+
+    return globals()[fontKey]
+
+
+def hasFont(fontKey):
+    return fontKey in globals()
+
+
+def aliasFont(fontAlias, fontKey):
+    """Set a fontAlias as another alias name of fontKey"""
+    g = globals()
+    g[fontAlias] = g[fontKey]
+
+
+def getDefaultFont():
+    return tk.font.nametofont("TkDefaultFont")
+
+
+def getNamedFont(fontName):
+    return globals()[fontName]
+
+
+def getBigFont():
+    return getNamedFont(FONT_BIG)
+
+
+def setCommonFonts(windows=None):
+    """Set some predefined common fonts.
+    Same conditions of setFont applies here."""
+    f = setFont(FONT_NORMAL, family=cfgFontName, size=cfgFontSize)
+    aliasFont('fontButton', FONT_NORMAL)
+
+    # Set default font size
+    default_font = getDefaultFont()
+    default_font.configure(size=cfgFontSize, family=cfgFontName)
+
+    fb = setFont(FONT_BOLD, family=cfgFontName, size=cfgFontSize,
+                 weight='bold')
+    fi = setFont(FONT_ITALIC, family=cfgFontName, size=cfgFontSize,
+                 slant='italic')
+
+    setFont(FONT_BIG, family=cfgFontName, size=cfgFontBigSize)
+
+    # not used?
+    # setFont('fontLabel', family=cfgFontName, size=cfgFontSize+1, weight='bold')
+
+    if windows:
+        windows.fontBig = tkFont.Font(size=cfgFontSize + 2, family=cfgFontName,
+                                      weight='bold')
+        windows.font = f
+        windows.fontBold = fb
+        windows.fontItalic = fi
+
+        # This adds the default value for the listbox inside a combo box
+        # Which seems to not react to default font!!
+        windows.root.option_add("*TCombobox*Listbox*Font", default_font)
+        windows.root.option_add("*TCombobox*Font", default_font)
+
+
+def changeFontSizeByDeltha(font, deltha, minSize=-999, maxSize=999):
+    size = font['size']
+    new_size = size + deltha
+    if minSize <= new_size <= maxSize:
+        font.configure(size=new_size)
+
+
+def changeFontSize(font, event, minSize=-999, maxSize=999):
+    deltha = 2
+    if event.char == '-':
+        deltha = -2
+    changeFontSizeByDeltha(font, deltha, minSize, maxSize)
+
+
+# --------------- IMAGE related variables and functions -----------------------
+def getImage(imageName, imgDict=None, tkImage=True, percent=100,
+             maxheight=None):
+    """ Search for the image in the RESOURCES path list. """
+    if imageName is None:
+        return None
+    if imgDict is not None and imageName in imgDict:
+        return imgDict[imageName]
+    if not os.path.isabs(imageName):
+        imagePath = pw.findResource(imageName)
+    else:
+        imagePath = imageName
+    image = None
+    if imagePath:
+        from PIL import Image
+        image = Image.open(imagePath)
+        w, h = image.size
+        newSize = None
+        if percent != 100:  # Display image with other dimensions
+            fp = float(percent) / 100.0
+            newSize = int(fp * w), int(fp * h)
+        elif maxheight and h > maxheight:
+            newSize = int(w * float(maxheight) / h), maxheight
+        if newSize:
+            image.thumbnail(newSize, Image.ANTIALIAS)
+        if tkImage:
+            from PIL import ImageTk
+            image = ImageTk.PhotoImage(image)
+        if imgDict is not None:
+            imgDict[imageName] = image
+    return image
+
+
+# ---------------- Windows geometry utilities -----------------------
+def getGeometry(win):
+    """ Return the geometry information of the windows
+    It will be a tuple (width, height, x, y)
+    """
+    return (win.winfo_reqwidth(), win.winfo_reqheight(),
+            win.winfo_x(), win.winfo_y())
+
+
+def centerWindows(root, dim=None, refWindows=None):
+    """Center a windows in the middle of the screen 
+    or in the middle of other windows(refWindows param)"""
+    root.update_idletasks()
+    if dim is None:
+        gw, gh, gx, gy = getGeometry(root)
+    else:
+        gw, gh = dim
+    if refWindows:
+        rw, rh, rx, ry = getGeometry(refWindows)
+        x = rx + (rw - gw) / 2
+        y = ry + (rh - gh) / 2
+    else:
+        w = root.winfo_screenwidth()
+        h = root.winfo_screenheight()
+        x = (w - gw) / 2
+        y = (h - gh) / 2
+
+    root.geometry("%dx%d+%d+%d" % (gw, gh, x, y))
+
+
+def configureWeigths(widget, row=0, column=0):
+    """This function is a shortcut to a common
+    used pair of calls: rowconfigure and columnconfigure
+    for making childs widgets take the space available"""
+    widget.columnconfigure(column, weight=1)
+    widget.rowconfigure(row, weight=1)
+
+
+class Window:
+    """Class to manage a Tk windows.
+    It will encapsulates some basic creation and 
+    setup functions. """
+    # To allow plugins to add their own menus
+    _pluginMenus = list()
+
+    def __init__(self, title='', masterWindow=None, weight=True,
+                 minsize=(500, 300), icon=Icon.SCIPION_ICON, **kwargs):
+        """Create a Tk window.
+        title: string to use as title for the windows.
+        master: if not provided, the windows create will be the principal one
+        weight: if true, the first col and row will be configured with weight=1
+        minsize: a minimum size for height and width
+        icon: if not None, set the windows icon
+        """
+        # Init gui plugins
+        pw.Config.getDomain()._discoverGUIPlugins()
+
+        if masterWindow is None:
+            Window._root = self
+            self._images = {}
+            # If a window which isn't the main Scipion window is generated from another main window, e. g. with Scipion
+            # template after the refactoring of the kickoff, in which a dialog is launched and then a form, being it
+            # called from the command line, so there's no Scipion main window. In that case, a tk.Tk() exists because if
+            # a tk.TopLevel(), as the dialog, is directly launched, it automatically generates a main tk.Tk(). Thus,
+            # after that first auto-tk.Tk(), another tk.Tk() was created here, and so the previous information was lost.
+            # Solution proposed is to generate the root as an invisible window if it doesn't exist previously, and make
+            # he first window generated a tk.Toplevel. After that, all steps executed later will go through the else
+            # statement, being that way each new tk.Toplevel() correctly referenced.
+            tk.Tk().withdraw()  # Main window, invisible
+            self.root = tk.Toplevel()  # Toplevel of main window
+        else:
+            self.root = tk.Toplevel(masterWindow.root)
+            self._images = masterWindow._images
+
+        self.root.withdraw()
+        self.root.title(title)
+
+        if weight:
+            configureWeigths(self.root)
+        if minsize is not None:
+            self.root.minsize(minsize[0], minsize[1])
+
+        # Set the icon
+        self._setIcon(icon)
+
+        self.root.protocol("WM_DELETE_WINDOW", self._onClosing)
+        self._w, self._h, self._x, self._y = 0, 0, 0, 0
+        self.root.bind("<Configure>", self._configure)
+        self.master = masterWindow
+        setCommonFonts(self)
+
+        if kwargs.get('enableQueue', False):
+            self.queue = queue.Queue(maxsize=0)
+        else:
+            self.queue = None
+
+    def _setIcon(self, icon):
+
+        if icon is not None:
+            try:
+                path = pw.findResource(icon)
+                # If path is None --> Icon not found
+                if path is None:
+                    # By default, if icon is not found use default scipion one.
+                    path = pw.findResource(Icon.SCIPION_ICON)
+
+                abspath = os.path.abspath(path)
+
+                img = tk.Image("photo", file=abspath)
+                self.root.tk.call('wm', 'iconphoto', self.root._w, img)
+            except Exception as e:
+                # Do nothing if icon could not be loaded
+                pass
+
+    def __processQueue(self):  # called from main frame
+        if not self.queue.empty():
+            func = self.queue.get(block=False)
+            # executes graphic interface function
+            func()
+        self._queueTimer = self.root.after(500, self.__processQueue)
+
+    def enqueue(self, func):
+        """ Put some function to be executed in the GUI main thread. """
+        self.queue.put(func)
+
+    def getRoot(self):
+        return self.root
+
+    def desiredDimensions(self):
+        """Override this method to calculate desired dimensions."""
+        return None
+
+    def _configure(self, e):
+        """ Filter event and call appropriate handler. """
+        if self.root != e.widget:
+            return
+
+        _, _, x, y = getGeometry(self.root)
+        w, h = e.width, e.height
+
+        if w != self._w or h != self._h:
+            self._w, self._h = w, h
+            self.handleResize()
+
+        if x != self._x or y != self._y:
+            self._x, self._y = x, y
+            self.handleMove()
+
+    def handleResize(self):
+        """Override this method to respond to resize events."""
+        pass
+
+    def handleMove(self):
+        """Override this method to respond to move events."""
+        pass
+
+    def show(self, center=True):
+        """This function will enter in the Tk mainloop"""
+        if center:
+            if self.master is None:
+                refw = None
+            else:
+                refw = self.master.root
+            centerWindows(self.root, dim=self.desiredDimensions(),
+                          refWindows=refw)
+        self.root.deiconify()
+        self.root.focus_set()
+        if self.queue is not None:
+            self._queueTimer = self.root.after(1000, self.__processQueue)
+        self.root.mainloop()
+
+    def close(self, e=None):
+        self.root.destroy()
+        # JMRT: For some reason when Tkinter has an exception
+        # it does not exit the application as expected and
+        # remains in the mainloop, so here we are forcing
+        # to exit the whole system (only applies for the main window)
+        if self.master is None:
+            import sys
+            sys.exit()
+
+    def _onClosing(self):
+        """Do some cleaning before closing."""
+        if self.master is None:
+            pass
+        else:
+            self.master.root.focus_set()
+        if self.queue is not None:
+            self.root.after_cancel(self._queueTimer)
+        self.close()
+
+    def getImage(self, imgName, percent=100, maxheight=None):
+        return getImage(imgName, self._images, percent=percent,
+                        maxheight=maxheight)
+
+    def createMainMenu(self, menuConfig):
+        """Create Main menu from the given MenuConfig object."""
+        menu = tk.Menu(self.root, font=self.font)
+        self._addMenuChilds(menu, menuConfig)
+        self._addPluginMenus(menu)
+        self.root.config(menu=menu)
+        return menu
+
+    def _addMenuChilds(self, menu, menuConfig):
+        """Add entries of menuConfig in menu
+        (using add_cascade or add_command for sub-menus and final options)."""
+        # Helper function to create the main menu.
+        for sub in menuConfig:
+            menuLabel = sub.text
+            if not menuLabel:  # empty or None label means a separator
+                menu.add_separator()
+            elif len(sub) > 0:  # sub-menu
+                submenu = tk.Menu(self.root, tearoff=0, font=self.font)
+                menu.add_cascade(label=menuLabel, menu=submenu)
+                self._addMenuChilds(submenu, sub)  # recursive filling
+            else:  # menu option
+                # If there is an entry called "Browse files", when clicked it
+                # will call the method onBrowseFiles() (it has to be defined!)
+                def callback(name):
+                    """Return a callback function named "on<Name>"."""
+                    f = "on%s" % "".join(x.capitalize() for x in name.split())
+                    return lambda: getattr(self, f)()
+
+                if sub.shortCut is not None:
+                    menuLabel += ' (' + sub.shortCut + ')'
+
+                menu.add_command(label=menuLabel, compound=tk.LEFT,
+                                 image=self.getImage(sub.icon),
+                                 command=callback(name=sub.text))
+
+    def _addPluginMenus(self, menu):
+
+        if self._pluginMenus:
+            submenu = tk.Menu(self.root, tearoff=0, font=self.font)
+            menu.add_cascade(label="Others", menu=submenu)
+
+            # For each plugin menu
+            for label, callback, icon in self._pluginMenus:
+                submenu.add_command(label=label, compound=tk.LEFT,
+                                    image=self.getImage(icon),
+                                    command=callback)
+
+    @classmethod
+    def registerPluginMenu(cls, label, callback, icon=None):
+        # TODO: have a proper model instead of a tuple?
+        cls._pluginMenus.append((label, callback, icon))
+
+    def showError(self, msg, header="Error", exception=None):
+        """Pops up a dialog with the error message
+        :param msg Message to display
+        :param header Title of the dialog
+        :param exception: Optional. exception associated"""
+        from .dialog import showError
+        showError(header, msg, self.root, exception=exception)
+
+    def showInfo(self, msg, header="Info"):
+        from .dialog import showInfo
+        showInfo(header, msg, self.root)
+
+    def showWarning(self, msg, header='Warning'):
+        from .dialog import showWarning
+        showWarning(header, msg, self.root)
+
+    def askYesNo(self, title, msg):
+        from .dialog import askYesNo
+        return askYesNo(title, msg, self.root)
+
+    def createCloseButton(self, parent):
+        """ Create a button for closing the window, setting
+        the proper label and icon. 
+        """
+        return Button(parent, Message.LABEL_BUTTON_CLOSE, Icon.ACTION_CLOSE,
+                      command=self.close)
+
+    def configureWeights(self, row=0, column=0):
+        configureWeigths(self.root, row, column)
