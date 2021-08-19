@@ -1,0 +1,94 @@
+# coding=utf-8
+from __future__ import absolute_import, division, print_function, unicode_literals
+
+import wrapt
+from flask import current_app
+from flask.globals import request
+
+import scout_apm.core
+from scout_apm.core.config import scout_config
+from scout_apm.core.tracked_request import TrackedRequest
+from scout_apm.core.web_requests import werkzeug_track_request_data
+
+
+class ScoutApm(object):
+    def __init__(self, app):
+        self.app = app
+        self._attempted_install = False
+        app.full_dispatch_request = self.wrapped_full_dispatch_request(
+            app.full_dispatch_request
+        )
+        app.preprocess_request = self.wrapped_preprocess_request(app.preprocess_request)
+
+    @wrapt.decorator
+    def wrapped_full_dispatch_request(self, wrapped, instance, args, kwargs):
+        if not self._attempted_install:
+            self.extract_flask_settings()
+            installed = scout_apm.core.install()
+            self._do_nothing = not installed
+            self._attempted_install = True
+
+        if self._do_nothing:
+            return wrapped(*args, **kwargs)
+
+        # Pass on routing exceptions (normally 404's)
+        if request.routing_exception is not None:
+            return wrapped(*args, **kwargs)
+
+        rule = request.url_rule
+        view_func = instance.view_functions[rule.endpoint]
+
+        name = view_func.__module__ + "." + view_func.__name__
+        operation = "Controller/" + name
+
+        tracked_request = TrackedRequest.instance()
+        tracked_request.is_real_request = True
+        request._scout_tracked_request = tracked_request
+
+        werkzeug_track_request_data(request, tracked_request)
+
+        with tracked_request.span(
+            operation=operation, should_capture_backtrace=False
+        ) as span:
+            request._scout_view_span = span
+
+            try:
+                response = wrapped(*args, **kwargs)
+            except Exception as exc:
+                tracked_request.tag("error", "true")
+                raise exc
+            else:
+                if 500 <= response.status_code <= 599:
+                    tracked_request.tag("error", "true")
+                return response
+
+    @wrapt.decorator
+    def wrapped_preprocess_request(self, wrapped, instance, args, kwargs):
+        tracked_request = getattr(request, "_scout_tracked_request", None)
+        if tracked_request is None:
+            return wrapped(*args, **kwargs)
+
+        # Unlike middleware in other frameworks, using request preprocessors is
+        # less common in Flask, so only add a span if there is any in use
+        have_before_request_funcs = (
+            None in instance.before_request_funcs
+            or request.blueprint in instance.before_request_funcs
+        )
+        if not have_before_request_funcs:
+            return wrapped(*args, **kwargs)
+
+        with tracked_request.span("PreprocessRequest", should_capture_backtrace=False):
+            return wrapped(*args, **kwargs)
+
+    def extract_flask_settings(self):
+        """
+        Copies SCOUT_* settings in the app into Scout's config lookup
+        """
+        configs = {}
+        configs["application_root"] = self.app.instance_path
+        for name in current_app.config:
+            if name.startswith("SCOUT_"):
+                value = current_app.config[name]
+                clean_name = name.replace("SCOUT_", "").lower()
+                configs[clean_name] = value
+        scout_config.set(**configs)
