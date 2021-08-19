@@ -1,0 +1,478 @@
+from pprint import pformat
+
+import click
+import py42.sdk.queries.fileevents.filters as f
+from c42eventextractor.extractors import FileEventExtractor
+from click import echo
+from py42.sdk.queries.fileevents.filters.exposure_filter import ExposureType
+from py42.sdk.queries.fileevents.filters.file_filter import FileCategory
+from py42.sdk.queries.fileevents.filters.risk_filter import RiskIndicator
+from py42.sdk.queries.fileevents.filters.risk_filter import RiskSeverity
+
+import code42cli.cmds.search.extraction as ext
+import code42cli.cmds.search.options as searchopt
+import code42cli.errors as errors
+import code42cli.options as opt
+from code42cli.click_ext.groups import OrderedGroup
+from code42cli.click_ext.options import incompatible_with
+from code42cli.click_ext.types import MapChoice
+from code42cli.cmds.search import SendToCommand
+from code42cli.cmds.search.cursor_store import FileEventCursorStore
+from code42cli.cmds.search.extraction import handle_no_events
+from code42cli.cmds.search.options import send_to_format_options
+from code42cli.cmds.search.options import server_options
+from code42cli.date_helper import convert_datetime_to_timestamp
+from code42cli.date_helper import limit_date_range
+from code42cli.options import format_option
+from code42cli.options import sdk_options
+from code42cli.output_formats import FileEventsOutputFormat
+from code42cli.output_formats import FileEventsOutputFormatter
+from code42cli.output_formats import OutputFormatter
+
+
+SECURITY_DATA_KEYWORD = "file events"
+file_events_format_option = click.option(
+    "-f",
+    "--format",
+    type=click.Choice(FileEventsOutputFormat(), case_sensitive=False),
+    help="The output format of the result. Defaults to table format.",
+    default=FileEventsOutputFormat.TABLE,
+)
+exposure_type_option = click.option(
+    "-t",
+    "--type",
+    multiple=True,
+    type=click.Choice(list(ExposureType.choices())),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    callback=searchopt.is_in_filter(f.ExposureType),
+    help="Limits events to those with given exposure types.",
+)
+username_option = click.option(
+    "--c42-username",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.DeviceUsername),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to endpoint events for these Code42 users.",
+)
+actor_option = click.option(
+    "--actor",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.Actor),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to only those enacted by the cloud service user "
+    "of the person who caused the event.",
+)
+md5_option = click.option(
+    "--md5",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.MD5),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to file events where the file has one of these MD5 hashes.",
+)
+sha256_option = click.option(
+    "--sha256",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.SHA256),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to file events where the file has one of these SHA256 hashes.",
+)
+source_option = click.option(
+    "--source",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.Source),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to only those from one of these sources. For example, Gmail, Box, or Endpoint.",
+)
+file_name_option = click.option(
+    "--file-name",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.FileName),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to file events where the file has one of these names.",
+)
+file_path_option = click.option(
+    "--file-path",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.FilePath),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to file events where the file is located at one of these paths. Applies to endpoint file events only.",
+)
+file_category_option = click.option(
+    "--file-category",
+    multiple=True,
+    type=MapChoice(
+        choices=list(FileCategory.choices()),
+        extras_map={
+            "AUDIO": FileCategory.AUDIO,
+            "DOCUMENT": FileCategory.DOCUMENT,
+            "EXECUTABLE": FileCategory.EXECUTABLE,
+            "IMAGE": FileCategory.IMAGE,
+            "PDF": FileCategory.PDF,
+            "PRESENTATION": FileCategory.PRESENTATION,
+            "SCRIPT": FileCategory.SCRIPT,
+            "SOURCE_CODE": FileCategory.SOURCE_CODE,
+            "SPREADSHEET": FileCategory.SPREADSHEET,
+            "VIDEO": FileCategory.VIDEO,
+            "VIRTUAL_DISK_IMAGE": FileCategory.VIRTUAL_DISK_IMAGE,
+            "ARCHIVE": FileCategory.ZIP,
+            "ZIP": FileCategory.ZIP,
+            "Zip": FileCategory.ZIP,
+        },
+    ),
+    callback=searchopt.is_in_filter(f.FileCategory),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to file events where the file can be classified by one of these categories.",
+)
+process_owner_option = click.option(
+    "--process-owner",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.ProcessOwner),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits exposure events by process owner, as reported by the device’s operating system. "
+    "Applies only to `Printed` and `Browser or app read` events.",
+)
+tab_url_option = click.option(
+    "--tab-url",
+    multiple=True,
+    callback=searchopt.is_in_filter(f.TabURL),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to be exposure events with one of the specified destination tab URLs.",
+)
+include_non_exposure_option = click.option(
+    "--include-non-exposure",
+    is_flag=True,
+    callback=searchopt.exists_filter(f.ExposureType),
+    cls=incompatible_with(["advanced_query", "type", "saved_search"]),
+    help="Get all events including non-exposure events.",
+)
+risk_indicator_map = {
+    "PUBLIC_CORPORATE_BOX": RiskIndicator.CloudDataExposures.PUBLIC_CORPORATE_BOX,
+    "PUBLIC_CORPORATE_GOOGLE": RiskIndicator.CloudDataExposures.PUBLIC_CORPORATE_GOOGLE_DRIVE,
+    "PUBLIC_CORPORATE_ONEDRIVE": RiskIndicator.CloudDataExposures.PUBLIC_CORPORATE_ONEDRIVE,
+    "SENT_CORPORATE_GMAIL": RiskIndicator.CloudDataExposures.SENT_CORPORATE_GMAIL,
+    "SHARED_CORPORATE_BOX": RiskIndicator.CloudDataExposures.SHARED_CORPORATE_BOX,
+    "SHARED_CORPORATE_GOOGLE_DRIVE": RiskIndicator.CloudDataExposures.SHARED_CORPORATE_GOOGLE_DRIVE,
+    "SHARED_CORPORATE_ONEDRIVE": RiskIndicator.CloudDataExposures.SHARED_CORPORATE_ONEDRIVE,
+    "AMAZON_DRIVE": RiskIndicator.CloudStorageUploads.AMAZON_DRIVE,
+    "BOX": RiskIndicator.CloudStorageUploads.BOX,
+    "DROPBOX": RiskIndicator.CloudStorageUploads.DROPBOX,
+    "GOOGLE_DRIVE": RiskIndicator.CloudStorageUploads.GOOGLE_DRIVE,
+    "ICLOUD": RiskIndicator.CloudStorageUploads.ICLOUD,
+    "MEGA": RiskIndicator.CloudStorageUploads.MEGA,
+    "ONEDRIVE": RiskIndicator.CloudStorageUploads.ONEDRIVE,
+    "ZOHO": RiskIndicator.CloudStorageUploads.ZOHO,
+    "BITBUCKET": RiskIndicator.CodeRepositoryUploads.BITBUCKET,
+    "GITHUB": RiskIndicator.CodeRepositoryUploads.GITHUB,
+    "GITLAB": RiskIndicator.CodeRepositoryUploads.GITLAB,
+    "SOURCEFORGE": RiskIndicator.CodeRepositoryUploads.SOURCEFORGE,
+    "STASH": RiskIndicator.CodeRepositoryUploads.STASH,
+    "163.COM": RiskIndicator.EmailServiceUploads.ONESIXTHREE_DOT_COM,
+    "126.COM": RiskIndicator.EmailServiceUploads.ONETWOSIX_DOT_COM,
+    "AOL": RiskIndicator.EmailServiceUploads.AOL,
+    "COMCAST": RiskIndicator.EmailServiceUploads.COMCAST,
+    "GMAIL": RiskIndicator.EmailServiceUploads.GMAIL,
+    "ICLOUD_MAIL": RiskIndicator.EmailServiceUploads.ICLOUD,
+    "MAIL.COM": RiskIndicator.EmailServiceUploads.MAIL_DOT_COM,
+    "OUTLOOK": RiskIndicator.EmailServiceUploads.OUTLOOK,
+    "PROTONMAIL": RiskIndicator.EmailServiceUploads.PROTONMAIL,
+    "QQMAIL": RiskIndicator.EmailServiceUploads.QQMAIL,
+    "SINA_MAIL": RiskIndicator.EmailServiceUploads.SINA_MAIL,
+    "SOHU_MAIL": RiskIndicator.EmailServiceUploads.SOHU_MAIL,
+    "YAHOO": RiskIndicator.EmailServiceUploads.YAHOO,
+    "ZOHO_MAIL": RiskIndicator.EmailServiceUploads.ZOHO_MAIL,
+    "AIRDROP": RiskIndicator.ExternalDevices.AIRDROP,
+    "REMOVABLE_MEDIA": RiskIndicator.ExternalDevices.REMOVABLE_MEDIA,
+    "AUDIO": RiskIndicator.FileCategories.AUDIO,
+    "DOCUMENT": RiskIndicator.FileCategories.DOCUMENT,
+    "EXECUTABLE": RiskIndicator.FileCategories.EXECUTABLE,
+    "IMAGE": RiskIndicator.FileCategories.IMAGE,
+    "PDF": RiskIndicator.FileCategories.PDF,
+    "PRESENTATION": RiskIndicator.FileCategories.PRESENTATION,
+    "SCRIPT": RiskIndicator.FileCategories.SCRIPT,
+    "SOURCE_CODE": RiskIndicator.FileCategories.SOURCE_CODE,
+    "SPREADSHEET": RiskIndicator.FileCategories.SPREADSHEET,
+    "VIDEO": RiskIndicator.FileCategories.VIDEO,
+    "VIRTUAL_DISK_IMAGE": RiskIndicator.FileCategories.VIRTUAL_DISK_IMAGE,
+    "ZIP": RiskIndicator.FileCategories.ZIP,
+    "FACEBOOK_MESSENGER": RiskIndicator.MessagingServiceUploads.FACEBOOK_MESSENGER,
+    "MICROSOFT_TEAMS": RiskIndicator.MessagingServiceUploads.MICROSOFT_TEAMS,
+    "SLACK": RiskIndicator.MessagingServiceUploads.SLACK,
+    "WHATSAPP": RiskIndicator.MessagingServiceUploads.WHATSAPP,
+    "OTHER": RiskIndicator.Other.OTHER,
+    "UNKNOWN": RiskIndicator.Other.UNKNOWN,
+    "FACEBOOK": RiskIndicator.SocialMediaUploads.FACEBOOK,
+    "LINKEDIN": RiskIndicator.SocialMediaUploads.LINKEDIN,
+    "REDDIT": RiskIndicator.SocialMediaUploads.REDDIT,
+    "TWITTER": RiskIndicator.SocialMediaUploads.TWITTER,
+    "FILE_MISMATCH": RiskIndicator.UserBehavior.FILE_MISMATCH,
+    "OFF_HOURS": RiskIndicator.UserBehavior.OFF_HOURS,
+    "REMOTE": RiskIndicator.UserBehavior.REMOTE,
+    "FIRST_DESTINATION_USE": RiskIndicator.UserBehavior.FIRST_DESTINATION_USE,
+    "RARE_DESTINATION_USE": RiskIndicator.UserBehavior.RARE_DESTINATION_USE,
+}
+risk_indicator_map_reversed = {v: k for k, v in risk_indicator_map.items()}
+
+
+def risk_indicator_callback(filter_cls):
+    def callback(ctx, param, arg):
+        if arg:
+            mapped_args = tuple(risk_indicator_map[i] for i in arg)
+            filter_func = searchopt.is_in_filter(filter_cls)
+            return filter_func(ctx, param, mapped_args)
+
+    return callback
+
+
+risk_indicator_option = click.option(
+    "--risk-indicator",
+    multiple=True,
+    type=MapChoice(
+        choices=list(risk_indicator_map.keys()), extras_map=risk_indicator_map_reversed,
+    ),
+    callback=risk_indicator_callback(f.RiskIndicator),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to those classified by the given risk indicator categories.",
+)
+risk_severity_option = click.option(
+    "--risk-severity",
+    multiple=True,
+    type=click.Choice(list(RiskSeverity.choices())),
+    callback=searchopt.is_in_filter(f.RiskSeverity),
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Limits events to those classified by the given risk severity.",
+)
+begin_option = opt.begin_option(
+    SECURITY_DATA_KEYWORD,
+    callback=lambda ctx, param, arg: convert_datetime_to_timestamp(
+        limit_date_range(arg, max_days_back=90)
+    ),
+)
+end_option = opt.end_option(SECURITY_DATA_KEYWORD)
+checkpoint_option = opt.checkpoint_option(
+    SECURITY_DATA_KEYWORD, cls=searchopt.AdvancedQueryAndSavedSearchIncompatible
+)
+advanced_query_option = searchopt.advanced_query_option(SECURITY_DATA_KEYWORD)
+
+
+def _get_saved_search_option():
+    def _get_saved_search_query(ctx, param, arg):
+        if arg is None:
+            return
+        query = ctx.obj.sdk.securitydata.savedsearches.get_query(arg)
+        return query
+
+    return click.option(
+        "--saved-search",
+        help="Get events from a saved search filter with the given ID.",
+        callback=_get_saved_search_query,
+        cls=incompatible_with("advanced_query"),
+    )
+
+
+def _create_header_keys_map():
+    return {"name": "Name", "id": "Id"}
+
+
+def _create_search_header_map():
+    return {
+        "fileName": "FileName",
+        "filePath": "FilePath",
+        "eventType": "Type",
+        "eventTimestamp": "EventTimestamp",
+        "fileCategory": "FileCategory",
+        "fileSize": "FileSize",
+        "fileOwner": "FileOwner",
+        "md5Checksum": "MD5Checksum",
+        "sha256Checksum": "SHA256Checksum",
+        "riskIndicators": "RiskIndicator",
+        "riskSeverity": "RiskSeverity",
+    }
+
+
+def search_options(f):
+    f = checkpoint_option(f)
+    f = advanced_query_option(f)
+    f = end_option(f)
+    f = begin_option(f)
+    return f
+
+
+def file_event_options(f):
+    f = exposure_type_option(f)
+    f = username_option(f)
+    f = actor_option(f)
+    f = md5_option(f)
+    f = sha256_option(f)
+    f = source_option(f)
+    f = file_name_option(f)
+    f = file_path_option(f)
+    f = file_category_option(f)
+    f = process_owner_option(f)
+    f = tab_url_option(f)
+    f = include_non_exposure_option(f)
+    f = risk_indicator_option(f)
+    f = risk_severity_option(f)
+    f = _get_saved_search_option()(f)
+    return f
+
+
+@click.group(cls=OrderedGroup)
+@sdk_options(hidden=True)
+def security_data(state):
+    """Get and send file event data."""
+    # store cursor getter on the group state so shared --begin option can use it in validation
+    state.cursor_getter = _get_file_event_cursor_store
+
+
+@security_data.command()
+@click.argument("checkpoint-name")
+@sdk_options()
+def clear_checkpoint(state, checkpoint_name):
+    """Remove the saved file event checkpoint from `--use-checkpoint/-c` mode."""
+    _get_file_event_cursor_store(state.profile.name).delete(checkpoint_name)
+
+
+@security_data.command()
+@file_event_options
+@search_options
+@click.option(
+    "--or-query", is_flag=True, cls=searchopt.AdvancedQueryAndSavedSearchIncompatible
+)
+@sdk_options()
+@click.option(
+    "--include-all",
+    default=False,
+    is_flag=True,
+    help="Display simple properties of the primary level of the nested response.",
+)
+@file_events_format_option
+def search(
+    state,
+    format,
+    begin,
+    end,
+    advanced_query,
+    use_checkpoint,
+    saved_search,
+    or_query,
+    include_all,
+    **kwargs,
+):
+    """Search for file events."""
+    output_header = ext.try_get_default_header(
+        include_all, _create_search_header_map(), format
+    )
+    formatter = FileEventsOutputFormatter(format, output_header)
+    cursor = _get_cursor(state, use_checkpoint)
+    handlers = ext.create_handlers(
+        state.sdk,
+        FileEventExtractor,
+        cursor,
+        use_checkpoint,
+        formatter=formatter,
+        force_pager=include_all,
+    )
+    _extract(
+        state, handlers, begin, end, or_query, advanced_query, saved_search, **kwargs
+    )
+
+
+@security_data.group(cls=OrderedGroup)
+@sdk_options()
+def saved_search(state):
+    """Search for file events using saved searches."""
+    pass
+
+
+@saved_search.command("list")
+@format_option
+@sdk_options()
+def _list(state, format=None):
+    """List available saved searches."""
+    formatter = OutputFormatter(format, _create_header_keys_map())
+    response = state.sdk.securitydata.savedsearches.get()
+    saved_searches = response["searches"]
+    if saved_searches:
+        formatter.echo_formatted_list(saved_searches)
+
+
+@saved_search.command()
+@click.argument("search-id")
+@sdk_options()
+def show(state, search_id):
+    """Get the details of a saved search."""
+    response = state.sdk.securitydata.savedsearches.get_by_id(search_id)
+    echo(pformat(response["searches"]))
+
+
+@security_data.command(cls=SendToCommand)
+@file_event_options
+@search_options
+@click.option(
+    "--or-query",
+    is_flag=True,
+    cls=searchopt.AdvancedQueryAndSavedSearchIncompatible,
+    help="Combine query filter options with 'OR' logic instead of the default 'AND'.",
+)
+@sdk_options()
+@server_options
+@click.option(
+    "--include-all",
+    default=False,
+    is_flag=True,
+    help="Display simple properties of the primary level of the nested response.",
+)
+@send_to_format_options
+def send_to(
+    state, begin, end, advanced_query, use_checkpoint, saved_search, or_query, **kwargs,
+):
+    """Send events to the given server address.
+
+    HOSTNAME format: address:port where port is optional and defaults to 514.
+    """
+    cursor = _get_cursor(state, use_checkpoint)
+    handlers = ext.create_send_to_handlers(
+        state.sdk, FileEventExtractor, cursor, use_checkpoint, state.logger
+    )
+    _extract(
+        state, handlers, begin, end, or_query, advanced_query, saved_search, **kwargs
+    )
+
+
+def _get_file_event_extractor(sdk, handlers):
+    return FileEventExtractor(sdk, handlers)
+
+
+def _get_cursor(state, use_checkpoint):
+    return _get_file_event_cursor_store(state.profile.name) if use_checkpoint else None
+
+
+def _get_file_event_cursor_store(profile_name):
+    return FileEventCursorStore(profile_name)
+
+
+def _extract(
+    state, handlers, begin, end, or_query, advanced_query, saved_search, **kwargs
+):
+    _call_extractor(
+        state, handlers, begin, end, or_query, advanced_query, saved_search, **kwargs
+    )
+    handle_no_events(not handlers.TOTAL_EVENTS and not errors.ERRORED)
+
+
+def _call_extractor(
+    state, handlers, begin, end, or_query, advanced_query, saved_search, **kwargs
+):
+    if advanced_query:
+        state.search_filters = advanced_query
+    extractor = _get_file_event_extractor(state.sdk, handlers)
+    extractor.use_or_query = or_query
+    extractor.or_query_exempt_filters.append(f.ExposureType.exists())
+    if saved_search:
+        extractor.extract(*saved_search._filter_group_list)
+    else:
+        if begin or end:
+            state.search_filters.append(
+                ext.create_time_range_filter(f.EventTimestamp, begin, end)
+            )
+        extractor.extract(*state.search_filters)
