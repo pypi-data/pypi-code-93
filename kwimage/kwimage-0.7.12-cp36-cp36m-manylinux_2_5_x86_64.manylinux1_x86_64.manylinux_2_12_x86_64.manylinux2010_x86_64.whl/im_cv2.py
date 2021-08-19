@@ -1,0 +1,1375 @@
+# -*- coding: utf-8 -*-
+"""
+Wrappers around cv2 functions
+
+Note: all functions in kwimage work with RGB input by default instead of BGR.
+"""
+from __future__ import absolute_import, division, print_function, unicode_literals
+import cv2
+import six
+import numpy as np
+import ubelt as ub
+import numbers
+from . import im_core
+
+
+_CV2_INTERPOLATION_TYPES = {
+    'nearest': cv2.INTER_NEAREST,
+    'linear':  cv2.INTER_LINEAR,
+    'area':    cv2.INTER_AREA,
+    'cubic':   cv2.INTER_CUBIC,
+    'lanczos': cv2.INTER_LANCZOS4
+}
+
+
+_CV2_BORDER_MODES = {
+    'constant':    cv2.BORDER_CONSTANT,
+    'replicate':   cv2.BORDER_REPLICATE,
+    'reflect':     cv2.BORDER_REFLECT,
+    'wrap':        cv2.BORDER_WRAP,
+    'reflect101':  cv2.BORDER_REFLECT101,
+    'transparent': cv2.BORDER_TRANSPARENT,
+}
+
+
+def _coerce_interpolation(interpolation, default=cv2.INTER_LANCZOS4,
+                          grow_default=cv2.INTER_LANCZOS4,
+                          shrink_default=cv2.INTER_AREA, scale=None):
+    """
+    Converts interpolation into flags suitable cv2 functions
+
+    Args:
+        interpolation (int or str): string or cv2-style interpolation type
+
+        default (int): cv2 flag to use if `interpolation` is None and scale is
+            None.
+
+        grow_default (int): cv2 flag to use if `interpolation` is None and
+            scale is greater than or equal to 1.
+
+        shrink_default (int): cv2 flag to use if `interpolation` is None and
+            scale is less than 1.
+
+        scale (float): indicate if the interpolation will be used to scale the
+            image.
+
+    Returns:
+        int: flag specifying interpolation type that can be passed to
+           functions like cv2.resize, cv2.warpAffine, etc...
+
+    Example:
+        >>> flag = _coerce_interpolation('linear')
+        >>> assert flag == cv2.INTER_LINEAR
+        >>> flag = _coerce_interpolation(cv2.INTER_LINEAR)
+        >>> assert flag == cv2.INTER_LINEAR
+        >>> flag = _coerce_interpolation('auto', default='lanczos')
+        >>> assert flag == cv2.INTER_LANCZOS4
+        >>> flag = _coerce_interpolation(None, default='lanczos')
+        >>> assert flag == cv2.INTER_LANCZOS4
+        >>> flag = _coerce_interpolation('auto', shrink_default='area', scale=0.1)
+        >>> assert flag == cv2.INTER_AREA
+        >>> flag = _coerce_interpolation('auto', grow_default='cubic', scale=10.)
+        >>> assert flag == cv2.INTER_CUBIC
+        >>> # xdoctest: +REQUIRES(module:pytest)
+        >>> import pytest
+        >>> with pytest.raises(TypeError):
+        >>>     _coerce_interpolation(3.4)
+        >>> import pytest
+        >>> with pytest.raises(KeyError):
+        >>>     _coerce_interpolation('foobar')
+    """
+    # Handle auto-defaulting
+    if interpolation is None or interpolation == 'auto':
+        if scale is None:
+            interpolation = default
+        else:
+            if scale >= 1:
+                interpolation = grow_default
+            else:
+                interpolation = shrink_default
+
+    # Handle coercion from string to cv2 integer flag
+    if isinstance(interpolation, six.text_type):
+        try:
+            return _CV2_INTERPOLATION_TYPES[interpolation]
+        except KeyError:
+            raise KeyError(
+                'Invalid interpolation value={!r}. '
+                'Valid strings for interpolation are {}'.format(
+                    interpolation, list(_CV2_INTERPOLATION_TYPES.keys())))
+    elif isinstance(interpolation, numbers.Integral):
+        return int(interpolation)
+    else:
+        raise TypeError(
+            'Invalid interpolation value={!r}. '
+            'Type must be int or string but got {!r}'.format(
+                interpolation, type(interpolation)))
+
+
+def _coerce_border(border_mode, default=cv2.BORDER_CONSTANT):
+    """
+    Converts border_mode into flags suitable cv2 functions
+
+    Args:
+        border_mode (int or str): string or cv2-style interpolation type
+
+    Returns:
+        int: flag specifying borderMode type that can be passed to
+           functions like cv2.warpAffine, etc...
+
+    Example:
+        >>> flag = _coerce_border('constant')
+        >>> assert flag == cv2.BORDER_CONSTANT
+        >>> flag = _coerce_border(cv2.BORDER_CONSTANT)
+        >>> assert flag == cv2.BORDER_CONSTANT
+        >>> flag = _coerce_border(None, default='reflect')
+        >>> assert flag == cv2.BORDER_REFLECT
+        >>> # xdoctest: +REQUIRES(module:pytest)
+        >>> import pytest
+        >>> with pytest.raises(TypeError):
+        >>>     _coerce_border(3.4)
+        >>> import pytest
+        >>> with pytest.raises(KeyError):
+        >>>     _coerce_border('foobar')
+    """
+    if border_mode is None:
+        border_mode = default
+
+    # Handle coercion from string to cv2 integer flag
+    if isinstance(border_mode, six.text_type):
+        try:
+            return _CV2_BORDER_MODES[border_mode]
+        except KeyError:
+            raise KeyError(
+                'Invalid border_mode value={!r}. '
+                'Valid strings for border_mode are {}'.format(
+                    border_mode, list(_CV2_BORDER_MODES.keys())))
+    elif isinstance(border_mode, numbers.Integral):
+        return int(border_mode)
+    else:
+        raise TypeError(
+            'Invalid border_mode value={!r}. '
+            'Type must be int or string but got {!r}'.format(
+                border_mode, type(border_mode)))
+
+
+def imscale(img, scale, interpolation=None, return_scale=False):
+    """
+    DEPRECATED and removed: use imresize instead
+    """
+    raise Exception('imscale is deprecated, use imresize instead')
+
+
+def imcrop(img, dsize, about=None, origin=None, border_value=None,
+           interpolation='nearest'):
+    """
+    Crop an image about a specified point, padding if necessary.
+
+    This is like PIL.Image.Image.crop with more convenient arguments,
+    or cv2.getRectSubPix without the baked-in bilinear interpolation.
+
+    Args:
+        img (ndarray): image to crop
+
+        dsize (Tuple[None | int, None | int]): the desired width and height
+            of the new image. If a dimension is None, then it is automatically
+            computed to preserve aspect ratio. This can be larger than the
+            original dims; if so, the cropped image is padded with
+            border_value.
+
+        about (Tuple[str | int, str | int]): the location to crop about.
+            Mutually exclusive with origin. Defaults to top left.
+            If ints (w,h) are provided, that will be the center of the cropped
+            image.
+            There are also string codes available:
+            'lt': make the top left point of the image the top left point of
+                the cropped image.  This is equivalent to img[:dsize[1],
+                :dsize[0]], plus padding.
+            'rb': make the bottom right point of the image the bottom right
+                point of the cropped image.  This is equivalent to
+                img[-dsize[1]:, -dsize[0]:], plus padding.
+            'cc': make the center of the image the center of the cropped image.
+            Any combination of these codes can be used, ex. 'lb', 'ct', ('r',
+            200), ...
+
+        origin (Tuple[int, int] | None):
+            the origin of the crop in (x,y) order (same order as dsize/about).
+            Mutually exclusive with about. Defaults to top left.
+
+        border_value (Numeric | Tuple | str, default=0):
+            any border border_value accepted by cv2.copyMakeBorder,
+            ex. [255, 0, 0] (blue). Default is 0.
+
+        interpolation (str, default='nearest'):
+            Can be 'nearest', in which case integral cropping is used.
+            Can also be 'linear', in which case cv2.getRectSubPix is used.
+
+    Returns:
+        ndarray: the cropped image
+
+    SeeAlso:
+        :func:`kwarray.padded_slice` - a similar function for working with
+            "negative slices".
+
+    Example:
+        >>> import kwimage
+        >>> import numpy as np
+        >>> #
+        >>> img = kwimage.grab_test_image('astro', dsize=(32, 32))
+        >>> #
+        >>> # regular crop
+        >>> new_img1 = kwimage.imcrop(img, dsize=(5,6))
+        >>> assert new_img1.shape == (6, 5, 3)
+        >>> #
+        >>> # padding for coords outside the image bounds
+        >>> new_img2 = kwimage.imcrop(img, dsize=(5,6),
+        >>>             origin=(-1,0), border_value=[1, 0, 0])
+        >>> assert np.all(new_img2[:, 0] == [1, 0, 0])
+        >>> #
+        >>> # codes for corner- and edge-centered cropping
+        >>> new_img3 = kwimage.imcrop(img, dsize=(5,6),
+        >>>             about='cb')
+        >>> #
+        >>> # special code for bilinear interpolation
+        >>> # with floating-point coordinates
+        >>> new_img4 = kwimage.imcrop(img, dsize=(5,6),
+        >>>             about=(5.5, 8.5), interpolation='linear')
+        >>> #
+        >>> # use with bounding boxes
+        >>> bbox = kwimage.Boxes.random(scale=5, rng=132).to_xywh().quantize()
+        >>> origin, dsize = np.split(bbox.data[0], 2)
+        >>> new_img5 = kwimage.imcrop(img, dsize=dsize,
+        >>>             origin=origin)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> pnum_ = kwplot.PlotNums(nSubplots=6)
+        >>> kwplot.imshow(img, pnum=pnum_())
+        >>> kwplot.imshow(new_img1, pnum=pnum_())
+        >>> kwplot.imshow(new_img2, pnum=pnum_())
+        >>> kwplot.imshow(new_img3, pnum=pnum_())
+        >>> kwplot.imshow(new_img4, pnum=pnum_())
+        >>> kwplot.imshow(new_img5, pnum=pnum_())
+        >>> kwplot.show_if_requested()
+    """
+    import numbers
+
+    old_h, old_w = img.shape[0:2]
+
+    assert len(dsize) == 2
+    new_w, new_h = dsize
+    assert isinstance(new_w, numbers.Integral)
+    assert isinstance(new_h, numbers.Integral)
+
+    if new_w is None:
+        assert new_h is not None
+        new_w = int(np.round(new_h * old_w / old_h))
+    elif new_h is None:
+        assert new_w is not None
+        new_h = int(np.round(new_w * old_h / old_w))
+
+    old_h, old_w = img.shape[0:2]
+
+    if origin is not None:
+
+        if about is not None:
+            raise AssertionError('provide at most one of "about" or "origin"')
+
+        assert len(origin) == 2
+        new_x, new_y = origin
+        assert isinstance(new_x, numbers.Integral)
+        assert isinstance(new_y, numbers.Integral)
+        cen_w = new_x + new_w // 2
+        cen_h = new_y + new_h // 2
+
+    elif about is not None:
+
+        if origin is not None:
+            raise AssertionError('provide at most one of "about" or "origin"')
+
+        assert len(about) == 2
+
+        if about[0] == 'l':
+            cen_w = new_w // 2
+        elif about[0] == 'r':
+            cen_w = old_w - (new_w - new_w // 2)
+        elif about[0] == 'c':
+            cen_w = old_w // 2
+        elif isinstance(about[0], numbers.Integral):
+            cen_w = about[0]
+        elif isinstance(about[0], numbers.Real):
+            if interpolation != 'linear':
+                raise ValueError('interpolation must be linear when about is real valued')
+            cen_w = about[0]
+        else:
+            raise ValueError('Invalid about code {}. Must be [l | c | r | int][t | c | b | int]'.format(about))
+
+        if about[1] == 't':
+            cen_h = new_h // 2
+        elif about[1] == 'b':
+            cen_h = old_h - (new_h - new_h // 2)
+        elif about[1] == 'c':
+            cen_h = old_h // 2
+        elif isinstance(about[1], numbers.Integral):
+            cen_h = about[1]
+        elif isinstance(about[1], numbers.Real):
+            if interpolation != 'linear':
+                raise ValueError('interpolation must be linear when about is real valued')
+            cen_h = about[1]
+        else:
+            raise ValueError('Invalid about code {}. Must be [l | c | r | int][t | c | b | int]'.format(about))
+
+    else:
+        # take top left as the origin
+        cen_w = new_w // 2
+        cen_h = new_h // 2
+
+    if interpolation == 'linear':
+        return cv2.getRectSubPix(img, dsize, (cen_h, cen_w))
+    elif interpolation == 'nearest':
+        # build a patch that may go outside the image bounds
+        ymin, ymax = cen_w - new_w // 2, cen_w + (new_w - new_w // 2)
+        xmin, xmax = cen_h - new_h // 2, cen_h + (new_h - new_h // 2)
+
+        # subtract out portions that leave the image bounds
+        lft, ymin = - min(0, ymin), max(0, ymin)
+        rgt, ymax = max(0, ymax - old_w), min(old_w, ymax)
+        top, xmin = - min(0, xmin), max(0, xmin)
+        bot, xmax = max(0, xmax - old_h), min(old_h, xmax)
+
+        # slice the image using the corrected bounds and append the rest as a border
+        return cv2.copyMakeBorder(img[xmin:xmax, ymin:ymax], top, bot, lft, rgt,
+                                  borderType=cv2.BORDER_CONSTANT,
+                                  value=border_value)
+    else:
+        raise KeyError(interpolation)
+
+
+def imresize(img, scale=None, dsize=None, max_dim=None, min_dim=None,
+             interpolation=None, grow_interpolation=None, letterbox=False,
+             return_info=False, antialias=False):
+    """
+    Resize an image based on a scale factor, final size, or size and aspect
+    ratio.
+
+    Slightly more general than cv2.resize, allows for specification of either a
+    scale factor, a final size, or the final size for a particular dimension.
+
+    Args:
+        img (ndarray): image to resize
+
+        scale (float or Tuple[float, float]):
+            Desired floating point scale factor. If a tuple, the dimension
+            ordering is x,y. Mutually exclusive with dsize, max_dim, and
+            min_dim.
+
+        dsize (Tuple[int] | None):
+            The desired with and height of the new image. If a dimension is
+            None, then it is automatically computed to preserve aspect ratio.
+            Mutually exclusive with size, max_dim, and min_dim.
+
+        max_dim (int):
+            New size of the maximum dimension, the other dimension is scaled to
+            maintain aspect ratio. Mutually exclusive with size, dsize, and
+            min_dim.
+
+        min_dim (int):
+            New size of the minimum dimension, the other dimension is scaled to
+            maintain aspect ratio.Mutually exclusive with size, dsize, and
+            max_dim.
+
+        interpolation (str | int):
+            The interpolation key or code (e.g. linear lanczos). By default
+            "area" is used if the image is shrinking and "lanczos" is used if
+            the image is growing. Note, if this is explicitly set, then it will
+            be used regardless of if the image is growing or shrinking. Set
+            ``grow_interpolation`` to change the default for an enlarging
+            interpolation.
+
+        grow_interpolation (str | int, default="lanczos"):
+            The interpolation key or code to use when the image is being
+            enlarged. Does nothing if "interpolation" is explicitly given. If
+            "interpolation" is not specified "area" is used when shrinking.
+
+        letterbox (bool, default=False):
+            If used in conjunction with dsize, then the image is scaled and
+            translated to fit in the center of the new image while maintaining
+            aspect ratio. Zero padding is added if necessary.
+
+        return_info (bool, default=False):
+            if True returns information about the final transformation in a
+            dictionary. If there is an offset, the scale is applied before the
+            offset when transforming to the new resized space.
+
+        antialias (bool, default=False):
+            if True blurs to anti-alias before downsampling.
+
+    Returns:
+        ndarray | Tuple[ndarray, Dict] :
+            the new image and optionally an info dictionary if
+            `return_info=True`
+
+    Example:
+        >>> import kwimage
+        >>> import numpy as np
+        >>> # Test scale
+        >>> img = np.zeros((16, 10, 3), dtype=np.uint8)
+        >>> new_img, info = kwimage.imresize(img, scale=.85,
+        >>>                                  interpolation='area',
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['scale'].tolist() == [.8, 0.875]
+        >>> # Test dsize without None
+        >>> new_img, info = kwimage.imresize(img, dsize=(5, 12),
+        >>>                                  interpolation='area',
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['scale'].tolist() == [0.5 , 0.75]
+        >>> # Test dsize with None
+        >>> new_img, info = kwimage.imresize(img, dsize=(6, None),
+        >>>                                  interpolation='area',
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['scale'].tolist() == [0.6, 0.625]
+        >>> # Test max_dim
+        >>> new_img, info = kwimage.imresize(img, max_dim=6,
+        >>>                                  interpolation='area',
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['scale'].tolist() == [0.4  , 0.375]
+        >>> # Test min_dim
+        >>> new_img, info = kwimage.imresize(img, min_dim=6,
+        >>>                                  interpolation='area',
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['scale'].tolist() == [0.6  , 0.625]
+
+    Example:
+        >>> import kwimage
+        >>> import numpy as np
+        >>> # Test letterbox resize
+        >>> img = np.ones((5, 10, 3), dtype=np.float32)
+        >>> new_img, info = kwimage.imresize(img, dsize=(19, 19),
+        >>>                                  letterbox=True,
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['offset'].tolist() == [0, 4]
+        >>> img = np.ones((10, 5, 3), dtype=np.float32)
+        >>> new_img, info = kwimage.imresize(img, dsize=(19, 19),
+        >>>                                  letterbox=True,
+        >>>                                  return_info=True)
+        >>> print('info = {!r}'.format(info))
+        >>> assert info['offset'].tolist() == [4, 0]
+
+        >>> import kwimage
+        >>> import numpy as np
+        >>> # Test letterbox resize
+        >>> img = np.random.rand(100, 200)
+        >>> new_img, info = kwimage.imresize(img, dsize=(300, 300), letterbox=True, return_info=True)
+
+    Example:
+        >>> # Check aliasing
+        >>> import kwimage
+        >>> img = kwimage.grab_test_image('checkerboard')
+        >>> img = kwimage.grab_test_image('astro')
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> dsize = (14, 14)
+        >>> dsize = (64, 64)
+        >>> # When we set "grow_interpolation" for a "shrinking" resize it should
+        >>> # still do the "area" interpolation to antialias the results. But if we
+        >>> # use explicit interpolation it should alias.
+        >>> pnum_ = kwplot.PlotNums(nSubplots=12, nCols=4)
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True,  interpolation='area'), pnum=pnum_(), title='resize aa area')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, interpolation='linear'), pnum=pnum_(), title='resize aa linear')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, interpolation='nearest'), pnum=pnum_(), title='resize aa nearest')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, interpolation='cubic'), pnum=pnum_(), title='resize aa cubic')
+
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, grow_interpolation='area'), pnum=pnum_(), title='resize aa grow area')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, grow_interpolation='linear'), pnum=pnum_(), title='resize aa grow linear')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, grow_interpolation='nearest'), pnum=pnum_(), title='resize aa grow nearest')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=True, grow_interpolation='cubic'), pnum=pnum_(), title='resize aa grow cubic')
+
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=False, interpolation='area'), pnum=pnum_(), title='resize no-aa area')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=False, interpolation='linear'), pnum=pnum_(), title='resize no-aa linear')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=False, interpolation='nearest'), pnum=pnum_(), title='resize no-aa nearest')
+        >>> kwplot.imshow(kwimage.imresize(img, dsize=dsize, antialias=False, interpolation='cubic'), pnum=pnum_(), title='resize no-aa cubic')
+
+    TODO:
+        - [X] When interpolation is area and the number of channels > 4
+              cv2.resize will error but it is fine for linear interpolation
+
+        - [ ] TODO: add padding options when letterbox=True
+    """
+    old_w, old_h = img.shape[0:2][::-1]
+
+    _mutex_args = [scale, dsize, max_dim, min_dim]
+    if sum(a is not None for a in _mutex_args) != 1:
+        raise ValueError(
+            'Must specify EXACTLY one of scale, dsize, max_dim, xor min_dim')
+
+    if scale is not None:
+        try:
+            sx, sy = scale
+        except TypeError:
+            sx = sy = scale
+        new_w = old_w * sx
+        new_h = old_h * sy
+    elif dsize is not None:
+        new_w, new_h = dsize
+    elif max_dim is not None:
+        if old_w > old_h:
+            new_w, new_h = max_dim, None
+        else:
+            new_w, new_h = None, max_dim
+    elif min_dim is not None:
+        if old_w > old_h:
+            new_w, new_h = None, min_dim
+        else:
+            new_w, new_h = min_dim, None
+    else:
+        raise AssertionError('impossible')
+
+    if new_w is None:
+        assert new_h is not None
+        new_w = new_h * old_w / old_h
+    elif new_h is None:
+        assert new_w is not None
+        new_h = new_w * old_h / old_w
+
+    grow_interpolation = _coerce_interpolation(grow_interpolation)
+
+    def _aa_resize(a, scale, dsize, interpolation):
+        sx, sy = scale
+        if sx < 1 or sy < 1:
+            a, sx, sy = _prepare_downscale(a, sx, sy)
+        return cv2.resize(a, dsize=dsize, interpolation=interpolation)
+
+    def _regular_resize(a, scale, dsize, interpolation):
+        return cv2.resize(a, dsize=dsize, interpolation=interpolation)
+
+    if antialias:
+        _chosen_resize = _aa_resize
+    else:
+        _chosen_resize = _regular_resize
+
+    def _patched_resize(img, scale, dsize, interpolation):
+        sx, sy = scale
+        num_chan = im_core.num_channels(img)
+        if num_chan > 512 or (num_chan > 4 and interpolation == cv2.INTER_AREA):
+            parts = np.split(img, img.shape[-1], -1)
+            newparts = [
+                _chosen_resize(chan, scale, dsize=dsize, interpolation=interpolation)[..., None]
+                for chan in parts
+            ]
+            newimg = np.concatenate(newparts, axis=2)
+            return newimg
+        newimg = _chosen_resize(img, scale, dsize, interpolation)
+        return newimg
+
+    if letterbox:
+        if dsize is None:
+            raise ValueError('letterbox can only be used with dsize')
+        orig_size = np.array(img.shape[0:2][::-1])
+        target_size = np.array(dsize)
+        # Determine to use the x or y scale factor
+        unequal_sxy = (target_size / orig_size)
+        equal_sxy = unequal_sxy.min()
+        # Whats the closest integer size we can resize to?
+        embed_size = np.round(orig_size * equal_sxy).astype(int)
+        # Determine how much padding we need for the top/left side
+        # Note: the right/bottom side might need an extra pixel of padding
+        # depending on rounding issues.
+        offset = np.round((target_size - embed_size) / 2).astype(int)
+        scale = embed_size / orig_size
+
+        left, top = offset
+        right, bot = target_size - (embed_size + offset)
+
+        interpolation = _coerce_interpolation(
+            interpolation, scale=equal_sxy, grow_default=grow_interpolation)
+
+        embed_dsize = tuple(embed_size)
+        embed_img = _patched_resize(img, scale, embed_dsize,
+                                    interpolation=interpolation)
+        new_img = cv2.copyMakeBorder(
+            embed_img, top, bot, left, right, borderType=cv2.BORDER_CONSTANT,
+            value=0)
+        if return_info:
+            info = {
+                'offset': offset,
+                'scale': scale,
+                'dsize': dsize,
+                'embed_size': embed_size,
+            }
+            return new_img, info
+        else:
+            return new_img
+
+    else:
+        # Use np.round over python round, which has incompatible behavior
+        old_dsize = (old_w, old_h)
+        new_dsize = (int(np.round(new_w)), int(np.round(new_h)))
+        new_scale = np.array(new_dsize) / np.array(old_dsize)
+        interpolation = _coerce_interpolation(
+            interpolation, scale=new_scale.min(),
+            grow_default=grow_interpolation)
+        new_img = _patched_resize(img, new_scale, new_dsize, interpolation=interpolation)
+        if return_info:
+            # import kwimage
+            # transform = kwimage.Affine.affine(scale=scale)
+            info = {
+                'offset': 0,
+                'scale': new_scale,
+                # 'matrix': transform.matrix,
+                'dsize': new_dsize,
+            }
+            return new_img, info
+        else:
+            return new_img
+
+
+def convert_colorspace(img, src_space, dst_space, copy=False,
+                       implicit=False, dst=None):
+    """
+    Converts colorspace of img.
+    Convenience function around cv2.cvtColor
+
+    Args:
+        img (ndarray): image data with float32 or uint8 precision
+
+        src_space (str): input image colorspace. (e.g. BGR, GRAY)
+
+        dst_space (str): desired output colorspace. (e.g. RGB, HSV, LAB)
+
+        implicit (bool):
+            if False, the user must correctly specify if the input/output
+                colorspaces contain alpha channels.
+            If True and the input image has an alpha channel, we modify
+                src_space and dst_space to ensure they both end with "A".
+
+        dst (ndarray[uint8_t, ndim=2], optional): inplace-output array.
+
+    Returns:
+        ndarray: img -  image data
+
+    Note:
+        Note the LAB and HSV colorspaces in float do not go into the 0-1 range.
+
+        For HSV the floating point range is:
+            0:360, 0:1, 0:1
+        For LAB the floating point range is:
+            0:100, -86.1875:98.234375, -107.859375:94.46875
+            (Note, that some extreme combinations of a and b are not valid)
+
+    Example:
+        >>> import numpy as np
+        >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[0, 1, 0]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[1, 0, 0]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[1, 1, 1]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'RGB', 'HSV')
+
+    Ignore:
+        # Check LAB output ranges
+        import itertools as it
+        s = 1
+        _iter = it.product(range(0, 256, s), range(0, 256, s), range(0, 256, s))
+        minvals = np.full(3, np.inf)
+        maxvals = np.full(3, -np.inf)
+        for r, g, b in ub.ProgIter(_iter, total=(256 // s) ** 3):
+            img255 = np.array([[[r, g, b]]], dtype=np.uint8)
+            img01 = (img255 / 255.0).astype(np.float32)
+            lab = convert_colorspace(img01, 'rgb', 'lab')
+            np.minimum(lab[0, 0], minvals, out=minvals)
+            np.maximum(lab[0, 0], maxvals, out=maxvals)
+        print('minvals = {}'.format(ub.repr2(minvals, nl=0)))
+        print('maxvals = {}'.format(ub.repr2(maxvals, nl=0)))
+    """
+    src_space = src_space.upper()
+    dst_space = dst_space.upper()
+
+    if implicit:
+        # Assume the user meant grayscale if there is only one channel
+        if im_core.num_channels(img) == 1:
+            src_space = 'gray'
+        # We give the caller some slack by assuming RGB means RGBA if the input
+        # image has an alpha channel.
+        elif im_core.num_channels(img) == 4:
+            if src_space[-1] != 'A':
+                src_space = src_space + 'A'
+            if dst_space[-1] != 'A':
+                dst_space = dst_space + 'A'
+
+    if img.dtype.kind == 'f':
+        # opencv requires float32 input
+        if img.dtype.itemsize == 8:
+            img = img.astype(np.float32)
+
+    if src_space == dst_space:
+        img2 = img
+        if dst is not None:
+            dst[...] = img[...]
+            img2 = dst
+        elif copy:
+            img2 = img2.copy()
+    else:
+        code = _lookup_cv2_colorspace_conversion_code(src_space, dst_space)
+        # Note the conversion to colorspaces like LAB and HSV in float form
+        # do not go into the 0-1 range. Instead they go into
+        # (0-100, -111-111ish, -111-111ish) and (0-360, 0-1, 0-1) respectively
+        img2 = cv2.cvtColor(img, code, dst=dst)
+    return img2
+
+
+def _lookup_cv2_colorspace_conversion_code(src_space, dst_space):
+    src = src_space.upper()
+    dst = dst_space.upper()
+    convert_attr = 'COLOR_{}2{}'.format(src, dst)
+    if not hasattr(cv2, convert_attr):
+        prefix = 'COLOR_{}2'.format(src)
+        valid_dst_spaces = [
+            key.replace(prefix, '')
+            for key in cv2.__dict__.keys() if key.startswith(prefix)]
+        raise KeyError(
+            '{} does not exist, valid conversions from {} are to {}'.format(
+                convert_attr, src_space, valid_dst_spaces))
+    else:
+        code = getattr(cv2, convert_attr)
+    return code
+
+
+def gaussian_patch(shape=(7, 7), sigma=None):
+    """
+    Creates a 2D gaussian patch with a specific size and sigma
+
+    Args:
+        shape (Tuple[int, int]): patch height and width
+        sigma (float | Tuple[float, float]): Gaussian standard deviation
+
+    References:
+        http://docs.opencv.org/modules/imgproc/doc/filtering.html#getgaussiankernel
+
+    TODO:
+        - [ ] Look into this C-implementation
+        https://kwgitlab.kitware.com/computer-vision/heatmap/blob/master/heatmap/heatmap.c
+
+    CommandLine:
+        xdoctest -m kwimage.im_cv2 gaussian_patch --show
+
+    Example:
+        >>> import numpy as np
+        >>> shape = (88, 24)
+        >>> sigma = None  # 1.0
+        >>> gausspatch = gaussian_patch(shape, sigma)
+        >>> sum_ = gausspatch.sum()
+        >>> assert np.all(np.isclose(sum_, 1.0))
+        >>> # xdoc: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> norm = (gausspatch - gausspatch.min()) / (gausspatch.max() - gausspatch.min())
+        >>> kwplot.imshow(norm)
+        >>> kwplot.show_if_requested()
+
+    Example:
+        >>> import numpy as np
+        >>> shape = (24, 24)
+        >>> sigma = 3.0
+        >>> gausspatch = gaussian_patch(shape, sigma)
+        >>> sum_ = gausspatch.sum()
+        >>> assert np.all(np.isclose(sum_, 1.0))
+        >>> # xdoc: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> norm = (gausspatch - gausspatch.min()) / (gausspatch.max() - gausspatch.min())
+        >>> kwplot.imshow(norm)
+        >>> kwplot.show_if_requested()
+    """
+    if sigma is None:
+        sigma1 = 0.3 * ((shape[0] - 1) * 0.5 - 1) + 0.8
+        sigma2 = 0.3 * ((shape[1] - 1) * 0.5 - 1) + 0.8
+    elif isinstance(sigma, (float, int)):
+        sigma1 = sigma2 = sigma
+    else:
+        sigma1, sigma2 = sigma
+    # see hesaff/src/helpers.cpp : computeCircularGaussMask
+    kernel_d0 = cv2.getGaussianKernel(shape[0], sigma1)
+    if shape[0] == shape[1] and sigma2 == sigma1:
+        kernel_d1 = kernel_d0
+    else:
+        kernel_d1 = cv2.getGaussianKernel(shape[1], sigma2)
+    gausspatch = kernel_d0.dot(kernel_d1.T)
+    return gausspatch
+
+
+def warp_affine(image, transform, dsize=None, antialias=False,
+                interpolation='linear', border_mode=None, border_value=0,
+                large_warp_dim=None, return_info=False):
+    """
+    Applies an affine transformation to an image with optional antialiasing.
+
+    Args:
+        image (ndarray): the input image as a numpy array.
+            Note: this is passed directly to cv2, so it is best to ensure that
+            it is contiguous and using a dtype that cv2 can handle.
+
+        transform (ndarray | Affine): a coercable affine matrix.
+            See :class:`kwimage.Affine` for details on what can be coerced.
+
+        dsize (Tuple[int, int] | None | str, default=None):
+            A integer width and height tuple of the resulting "canvas" image.
+            If None, then the input image size is used.
+
+            If specified as a string, dsize is computed based on the given
+            heuristic.
+
+            If 'positive' (or 'auto'), dsize is computed such that the positive
+            coordinates of the warped image will fit in the new canvas. In this
+            case, any pixel that maps to a negative coordinate will be clipped.
+            This has the property that the input transformation is not
+            modified.
+
+            If 'content' (or 'max'), the transform is modified with an extra
+            translation such that both the positive and negative coordinates of
+            the warped image will fit in the new canvas.
+
+        antialias (bool, default=False):
+            if True determines if the transform is downsampling and applies
+            antialiasing via gaussian a blur.
+
+        interpolation (str, default="linear"):
+            interpolation code or cv2 integer. Interpolation codes are linear,
+            nearest, cubic, lancsoz, and area.
+
+        border_mode (str):
+            Border code or cv2 integer. Border codes are constant replicate,
+            reflect, wrap, reflect101, and transparent.
+
+        border_value (int | float):
+            Used as the fill value if border_mode is constant. Otherwise this
+            is ignored.
+
+        large_warp_dim (int | None | str, default=None):
+            If specified, perform the warp piecewise in chunks of the specified
+            size. If "auto", it is set to the maximum "short" value in numpy.
+            This works around a limitation of cv2.warpAffine, which must have
+            image dimensions < SHRT_MAX (=32767 in version 4.5.3)
+
+        return_info (bool, default=Fasle):
+            if True, returns information about the operation. In the case
+            where dsize="content", this includes the modified transformation.
+
+    Returns:
+        ndarray | Tuple[ndarray, Dict]:
+            the warped image, or if return info is True, the warped image and
+            the info dictionary.
+
+    Example:
+        >>> from kwimage.im_cv2 import *  # NOQA
+        >>> import kwimage
+        >>> from kwimage.transform import Affine
+        >>> image = kwimage.grab_test_image('astro')
+        >>> #image = kwimage.grab_test_image('checkerboard')
+        >>> transform = Affine.random() @ Affine.scale(0.05)
+        >>> transform = Affine.scale(0.02)
+        >>> warped1 = warp_affine(image, transform, dsize='positive', antialias=1, interpolation='nearest')
+        >>> warped2 = warp_affine(image, transform, dsize='positive', antialias=0)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> pnum_ = kwplot.PlotNums(nRows=1, nCols=2)
+        >>> kwplot.imshow(warped1, pnum=pnum_(), title='antialias=True')
+        >>> kwplot.imshow(warped2, pnum=pnum_(), title='antialias=False')
+        >>> kwplot.show_if_requested()
+
+    Example:
+        >>> from kwimage.im_cv2 import *  # NOQA
+        >>> import kwimage
+        >>> from kwimage.transform import Affine
+        >>> image = kwimage.grab_test_image('astro')
+        >>> image = kwimage.grab_test_image('checkerboard')
+        >>> transform = Affine.random() @ Affine.scale((.1, 1.2))
+        >>> warped1 = warp_affine(image, transform, dsize='positive', antialias=1)
+        >>> warped2 = warp_affine(image, transform, dsize='positive', antialias=0)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> pnum_ = kwplot.PlotNums(nRows=1, nCols=2)
+        >>> kwplot.imshow(warped1, pnum=pnum_(), title='antialias=True')
+        >>> kwplot.imshow(warped2, pnum=pnum_(), title='antialias=False')
+        >>> kwplot.show_if_requested()
+
+    Example:
+        >>> # Test the case where the input data is empty or the target canvas
+        >>> # is empty, this should be handled like boundary effects
+        >>> import kwimage
+        >>> image = np.random.rand(1, 1, 3)
+        >>> transform = kwimage.Affine.random()
+        >>> result = kwimage.warp_affine(image, transform, dsize=(0, 0))
+        >>> assert result.shape == (0, 0, 3)
+        >>> #
+        >>> empty_image = np.random.rand(0, 1, 3)
+        >>> result = kwimage.warp_affine(empty_image, transform, dsize=(10, 10))
+        >>> assert result.shape == (10, 10, 3)
+        >>> #
+        >>> empty_image = np.random.rand(0, 1, 3)
+        >>> result = kwimage.warp_affine(empty_image, transform, dsize=(10, 0))
+        >>> assert result.shape == (0, 10, 3)
+
+    Example:
+        >>> # Demo difference between positive and content dsize
+        >>> from kwimage.im_cv2 import *  # NOQA
+        >>> import kwimage
+        >>> from kwimage.transform import Affine
+        >>> image = kwimage.grab_test_image('astro', dsize=(512, 512))
+        >>> transform = Affine.coerce(offset=(-100, -50), scale=2, theta=0.1)
+        >>> # When warping other images or geometry along with this image
+        >>> # it is important to account for the modified transform when
+        >>> # setting dsize='content'. If dsize='positive', the transform
+        >>> # will remain unchanged wrt other aligned images / geometries.
+        >>> poly = kwimage.Boxes([[350, 5, 130, 290]], 'xywh').to_polygons()[0]
+        >>> # Apply the warping to the images
+        >>> warped_pos, info_pos = warp_affine(image, transform, dsize='positive', return_info=True)
+        >>> warped_con, info_con = warp_affine(image, transform, dsize='content', return_info=True)
+        >>> assert info_pos['dsize'] == (919, 1072)
+        >>> assert info_con['dsize'] == (1122, 1122)
+        >>> assert info_pos['transform'] == transform
+        >>> # Demo the correct and incorrect way to apply transforms
+        >>> poly_pos = poly.warp(transform)
+        >>> poly_con = poly.warp(info_con['transform'])
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> # show original
+        >>> kwplot.imshow(image, pnum=(1, 3, 1), title='original')
+        >>> poly.draw(color='green', alpha=0.5, border=True)
+        >>> # show positive warped
+        >>> kwplot.imshow(warped_pos, pnum=(1, 3, 2), title='dsize=positive')
+        >>> poly_pos.draw(color='purple', alpha=0.5, border=True)
+        >>> # show content warped
+        >>> ax = kwplot.imshow(warped_con, pnum=(1, 3, 3), title='dsize=content')[1]
+        >>> poly_con.draw(color='dodgerblue', alpha=0.5, border=True)   # correct
+        >>> poly_pos.draw(color='orangered', alpha=0.5, border=True)  # incorrect
+        >>> cc = poly_con.to_shapely().centroid
+        >>> cp = poly_pos.to_shapely().centroid
+        >>> ax.text(cc.x, cc.y + 250, 'correctly transformed', color='dodgerblue',
+        >>>         backgroundcolor=(0, 0, 0, 0.7), horizontalalignment='center')
+        >>> ax.text(cp.x, cp.y - 250, 'incorrectly transformed', color='orangered',
+        >>>         backgroundcolor=(0, 0, 0, 0.7), horizontalalignment='center')
+        >>> kwplot.show_if_requested()
+
+    Example:
+        >>> # Demo piecewise transform
+        >>> from kwimage.im_cv2 import *  # NOQA
+        >>> import kwimage
+        >>> from kwimage.transform import Affine
+        >>> image = kwimage.grab_test_image('astro', dsize=(512, 512))
+        >>> transform = Affine.coerce(offset=(-100, -50), scale=2, theta=0.1)
+        >>> warped_piecewise, info = warp_affine(image, transform, dsize='positive', return_info=True, large_warp_dim=32)
+        >>> warped_normal, info = warp_affine(image, transform, dsize='positive', return_info=True, large_warp_dim=None)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.imshow(image, pnum=(1, 3, 1), title='original')
+        >>> kwplot.imshow(warped_normal, pnum=(1, 3, 2), title='normal warp')
+        >>> kwplot.imshow(warped_piecewise, pnum=(1, 3, 3), title='piecewise warp')
+    """
+    from kwimage.transform import Affine
+    import kwimage
+
+    transform = Affine.coerce(transform)
+    flags = _coerce_interpolation(interpolation)
+    borderMode = _coerce_border(border_mode)
+    borderValue = border_value
+
+    h, w = image.shape[0:2]
+
+    if isinstance(dsize, str) or large_warp_dim is not None:
+        # calculate dimensions needed for auto/max/try_large_warp
+        box = kwimage.Boxes(np.array([[0, 0, w, h]]), 'xywh')
+        warped_box = box.warp(transform)
+        max_dsize = tuple(map(int, warped_box.to_xywh().quantize().data[0, 2:4]))
+        new_origin = warped_box.to_ltrb().data[0, 0:2]
+    else:
+        max_dsize = None
+        new_origin = None
+
+    transform_ = transform
+
+    if dsize is None:
+        # If unspecified, leave the canvas size unchanged
+        dsize = (w, h)
+    elif isinstance(dsize, str):
+        # Handle special "auto-compute" dsize keys
+        if dsize in {'positive', 'auto'}:
+            dsize = tuple(map(int, warped_box.to_ltrb().quantize().data[0, 2:4]))
+        elif dsize in {'content', 'max'}:
+            dsize = max_dsize
+            transform_ = Affine.translate(-new_origin) @ transform
+            new_origin = np.array([0, 0])
+        else:
+            raise KeyError('Unknown dsize={}'.format(dsize))
+
+    info = {
+        'transform': transform_,
+        'dsize': dsize,
+        'antialias_info': None,
+    }
+
+    if any(d == 0 for d in dsize) or any(d == 0 for d in image.shape[0:2]):
+        # Handle case where the input image has no size or the destination
+        # canvas has no size. In either case we just return empty data
+        output_shape = (dsize[1], dsize[0]) + image.shape[2:]
+        result = np.full(
+            shape=output_shape, fill_value=borderValue, dtype=image.dtype)
+    elif not antialias:
+        result = _try_warp(image, transform_, large_warp_dim, dsize, max_dsize,
+                           new_origin, flags, borderMode, borderValue)
+    else:
+        # Decompose the affine matrix into its 6 core parameters
+        params = transform_.decompose()
+        sx, sy = params['scale']
+
+        if sx > 1 and sy > 1:
+            # No downsampling detected, no need to antialias
+            result = _try_warp(image, transform_, large_warp_dim, dsize,
+                               max_dsize, new_origin, flags, borderMode,
+                               borderValue)
+        else:
+            # At least one dimension is downsampled
+            """
+            Variations that could change in the future:
+
+                * In _gauss_params I'm not sure if we want to compute integer or
+                    fractional "number of downsamples".
+
+                * The fudge factor bothers me, but seems necessary
+            """
+
+            # Compute the transform with all scaling removed
+            noscale_warp = Affine.affine(**ub.dict_diff(params, {'scale'}))
+
+            # Execute part of the downscale with iterative pyramid downs
+            downscaled, residual_sx, residual_sy = _prepare_downscale(
+                image, sx, sy)
+
+            # Compute the transform from the downsampled image to the destination
+            rest_warp = noscale_warp @ Affine.scale((residual_sx, residual_sy))
+
+            info['antialias_info'] = {
+                'noscale_warp': noscale_warp,
+                'rest_warp': rest_warp,
+            }
+
+            result = _try_warp(downscaled, rest_warp, large_warp_dim, dsize,
+                               max_dsize, new_origin, flags, borderMode,
+                               borderValue)
+
+    if return_info:
+        return result, info
+    else:
+        return result
+
+
+def _try_warp(image, transform_, large_warp_dim, dsize, max_dsize, new_origin,
+              flags, borderMode, borderValue):
+    """
+    Helper for warp_affine
+    """
+    if large_warp_dim == 'auto':
+        # this is as close as we can get to actually discovering SHRT_MAX since
+        # it's not introspectable through cv2.  numpy and cv2 could be pointing
+        # to a different limits.h, but otherwise this is correct
+        # https://stackoverflow.com/a/44123354
+        SHRT_MAX = np.iinfo(np.short).max
+        large_warp_dim = SHRT_MAX
+
+    max_dim = max(image.shape[0:2])
+    if large_warp_dim is None or max_dim < large_warp_dim:
+        try:
+            M = np.asarray(transform_)
+            return cv2.warpAffine(image, M[0:2], dsize=dsize, flags=flags,
+                                  borderMode=borderMode,
+                                  borderValue=borderValue)
+        except cv2.error as e:
+            if e.err == 'dst.cols < SHRT_MAX && dst.rows < SHRT_MAX && src.cols < SHRT_MAX && src.rows < SHRT_MAX':
+                print(
+                    'Image too large for warp_affine. Bypass this error by setting '
+                    'kwimage.warp_affine(large_warp_dim="auto")')
+                raise e
+
+    else:
+        # make these pieces as large as possible for efficiency
+        pieces_per_dim = 1 + max_dim // (large_warp_dim - 1)
+        return _large_warp(image, transform_, dsize, max_dsize,
+                           new_origin, flags, borderMode,
+                           borderValue, pieces_per_dim)
+
+
+def _large_warp(image,
+                transform_,
+                dsize,
+                max_dsize,
+                new_origin,
+                flags,
+                borderMode,
+                borderValue,
+                pieces_per_dim):
+    """
+    Split an image into pieces smaller than cv2's limit, perform cv2.warpAffine on each piece,
+    and stitch them back together with minimal artifacts.
+
+    Example:
+        >>> # xdoctest: +REQUIRES(--large_memory)
+        >>> import kwimage
+        >>> img = np.random.randint(255, size=(32767, 32767), dtype=np.uint8)
+        >>> aff = kwimage.Affine.random()
+        >>> import cv2
+        >>> #
+        >>> # without this function
+        >>> try:
+        >>>     res = kwimage.warp_affine(img, aff, large_warp_dim=None)
+        >>> except cv2.error as e:
+        >>>     pass
+        >>> #
+        >>> # with this function
+        >>> res = kwimage.warp_affine(img, aff, large_warp_dim='auto')
+        >>> assert res.shape == img.shape
+        >>> assert res.dtype == img.dtype
+
+    Example:
+        >>> import kwimage
+        >>> import cv2
+        >>> image = kwimage.grab_test_image('astro')
+        >>> # Use wrapper function
+        >>> transform = kwimage.Affine.coerce(
+        >>>     {'offset': (136.3946757082253, 0.0),
+        >>>      'scale': (1.7740542832875767, 1.0314621286400032),
+        >>>      'theta': 0.2612311452107956,
+        >>>      'type': 'affine'})
+        >>> res, info = kwimage.warp_affine(
+        >>>     image, transform, dsize='content', return_info=True,
+        >>>     large_warp_dim=128)
+        >>> # Explicit args for this function
+        >>> transform = info['transform']
+        >>> new_origin = np.array((0, 0))
+        >>> max_dsize = (1015, 745)
+        >>> dsize = max_dsize
+        >>> res2 = _large_warp(image, transform, dsize, max_dsize, new_origin,
+        >>>                   flags=cv2.INTER_LINEAR, borderMode=None,
+        >>>                   borderValue=None, pieces_per_dim=2)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.imshow(res, pnum=(1, 2, 1))
+        >>> kwplot.imshow(res2, pnum=(1, 2, 2))
+    """
+    from kwimage import Affine, Boxes
+    import cv2
+    import itertools as it
+
+    def _split_2d(arr):
+        # provide indexes to view arr in 2d blocks like 2 uses of
+        # np.array_split() but provides the indexes, not the data
+        h, w = arr.shape[0:2]
+        xs, ys = zip(
+            *np.linspace([0, 0], [w, h], num=pieces_per_dim + 1, dtype=int))
+        ixs = [
+            xx + yy for xx, yy in it.product(zip(xs[:-1], xs[1:]),
+                                             zip(ys[:-1], ys[1:]))
+        ]
+        return Boxes(ixs, 'xxyy')  # could use to_slices() for portability
+
+    # do the warp with dsize='max' to make sure we don't lose any pieces
+    # then crop it down later if needed
+    max_transform = Affine.translate(-new_origin) @ transform_
+
+    # create an empty canvas to fill with the warped pieces
+    # this is a masked version of kwarray.Stitcher
+    # it mitigates but does not remove piece edge artifacts
+    result = np.zeros((*max_dsize[::-1], *image.shape[2:]), dtype=np.float32)
+    weight = np.zeros((*max_dsize[::-1], *image.shape[2:]), dtype=np.uint8)
+
+    # compute each piece with dsize=max and apply it to the canvas
+    # Note that this will unavoidably produce artifacts along the "seams"
+    # because interpolation is not performed across them.
+    for img_piece in _split_2d(image):
+
+        # restore extra dim from looping before converting to slice
+        img_piece = Boxes([img_piece.data], img_piece.format)
+        img_piece_ix = img_piece.to_slices()[0]
+
+        piece_wh = img_piece.to_xywh().data[0, 2:4]
+        warped_origin = img_piece.warp(max_transform).to_xywh().data[0, 0:2]
+
+        centered_bb = Boxes(
+            np.array([[0, 0, *piece_wh]]), 'xywh').warp(max_transform)
+        centered_origin = centered_bb.data[0, 0:2]
+
+        piece_centered_matrix = (
+            Affine.translate(-centered_origin) @ max_transform).matrix
+        warped_bbox = img_piece.warp(
+            piece_centered_matrix).to_ltrb().quantize()
+
+        warped_dsize = tuple(map(int, warped_bbox.to_xywh().data[0, 2:4]))
+        # do the quantizing manually here to avoid changing dsize
+        # TODO add check for going OOB of result's shape and replace floor w/
+        # round this produces shifts of up to 1 px
+        result_bbox = Boxes(
+            np.array([[*np.floor(warped_origin), *warped_dsize]]).astype(int),
+            'xywh')
+        result_ix = result_bbox.to_slices()[0]
+
+        warped_piece = cv2.warpAffine(image[img_piece_ix],
+                                      piece_centered_matrix[0:2],
+                                      dsize=warped_dsize,
+                                      flags=flags,
+                                      borderMode=borderMode,
+                                      borderValue=borderValue)
+
+        weight_piece = cv2.warpAffine(np.ones_like(image[img_piece_ix]),
+                                      piece_centered_matrix[0:2],
+                                      dsize=warped_dsize,
+                                      flags=flags,
+                                      borderMode=borderMode,
+                                      borderValue=borderValue)
+
+        result[result_ix] += warped_piece
+        weight[result_ix] += weight_piece
+
+    result = (result / np.where(weight != 0, weight, 1)).astype(image.dtype)
+
+    # crop and pad the canvas to the desired size
+    result = imcrop(result,
+                    dsize,
+                    origin=np.round(-new_origin).astype(int),
+                    border_value=borderValue)
+
+    return result
+
+
+def _prepare_downscale(image, sx, sy):
+    """
+    Does a partial downscale with antialiasing and prepares for a final
+    downsampling. Only downscales by factors of 2, any residual scaling to
+    be done is returned.
+
+    Example:
+        >>> s = 523
+        >>> image = np.random.rand(s, s)
+        >>> sx = sy = 1 / 11
+        >>> downsampled, rx, ry = _prepare_downscale(image, sx, sy)
+    """
+    max_scale = max(sx, sy)
+    # The "fudge" factor limits the number of downsampled pyramid
+    # operations. A bigger fudge factor means means that the final
+    # gaussian kernel for the antialiasing operation will be bigger.
+    # It essentially says that at most "fudge" downsampling ops will
+    # be handled by the final blur rather than the pyramid downsample.
+    # It seems to help with border effects at only a small runtime cost
+    # I don't entirely understand why the border artifact is introduced
+    # when this is enabled though
+
+    # TODO: should we allow for this fudge factor?
+    # TODO: what is the real name of this? num_down_prevent ?
+    # skip_final_downs?
+    fudge = 2
+    # TODO: should final antialiasing be on?
+    # Note, if fudge is non-zero it is important to do this.
+    do_final_aa = 1
+    # TODO: should fractional be True or False by default?
+    # If fudge is 0 and fractional=0, then I think is the same as
+    # do_final_aa=0.
+    fractional = 1
+
+    num_downs = max(int(np.log2(1 / max_scale)) - fudge, 0)
+    pyr_scale = 1 / (2 ** num_downs)
+
+    # Downsample iteratively with antialiasing
+    downscaled = _pyrDownK(image, num_downs)
+
+    residual_sx = sx / pyr_scale
+    residual_sy = sy / pyr_scale
+
+    # Do a final small blur to acount for the potential aliasing
+    # in any remaining scaling operations.
+    if do_final_aa:
+        # Computed as the closest sigma to the [1, 4, 6, 4, 1] approx
+        # used in cv2.pyrDown.
+        """
+        import cv2
+        import numpy as np
+        import scipy
+        import ubelt as ub
+        def sigma_error(sigma):
+            sigma = np.asarray(sigma).ravel()[0]
+            got = (cv2.getGaussianKernel(5, sigma) * 16).ravel()
+            want = np.array([1, 4, 6, 4, 1])
+            loss = ((got - want) ** 2).sum()
+            return loss
+        result = scipy.optimize.minimize(sigma_error, x0=1.0, method='Nelder-Mead')
+        print('result = {}'.format(ub.repr2(result, nl=1)))
+        # This gives a number like 1.06992187 which is not exactly what
+        # we use.
+        #
+        # The actual optimal result was gotten with a search over
+        # multiple optimization methods, Can be valided via:
+        assert sigma_error(1.0699027846904146) <= sigma_error(result.x)
+        """
+        aa_sigma0 = 1.0699027846904146
+        aa_k0 = 5
+        k_x, sigma_x = _gauss_params(scale=residual_sx, k0=aa_k0,
+                                     sigma0=aa_sigma0, fractional=fractional)
+        k_y, sigma_y = _gauss_params(scale=residual_sy, k0=aa_k0,
+                                     sigma0=aa_sigma0, fractional=fractional)
+
+        # Note: when k=1, no blur occurs
+        # blurBorderType = cv2.BORDER_REPLICATE
+        # blurBorderType = cv2.BORDER_CONSTANT
+        blurBorderType = cv2.BORDER_DEFAULT
+        downscaled = cv2.GaussianBlur(
+            downscaled, (k_x, k_y), sigma_x, sigma_y,
+            borderType=blurBorderType
+        )
+
+    return downscaled, residual_sx, residual_sy
+
+
+def _gauss_params(scale, k0=5, sigma0=1, fractional=True):
+    """
+    Compute a gaussian to mitigate aliasing for a requested downsample
+
+    Args:
+        scale: requested downsample factor
+        k0 (int): kernel size for one downsample operation
+        sigma0 (float): sigma for one downsample operation
+        fractional (bool): controls if we compute params for integer downsample
+        ops
+    """
+    num_downs = np.log2(1 / scale)
+    if not fractional:
+        num_downs = max(int(num_downs), 0)
+    if num_downs <= 0:
+        k = 1
+        sigma = 0
+    else:
+        # The kernel size and sigma doubles for each 2x downsample
+        sigma = sigma0 * (2 ** (num_downs - 1))
+        k = int(np.ceil(k0 * (2 ** (num_downs - 1))))
+        k = k + int(k % 2 == 0)
+    return k, sigma
+
+
+def _pyrDownK(a, k=1):
+    """
+    Downsamples by (2 ** k)x with antialiasing
+    """
+    if k == 0:
+        a = a.copy()
+    borderType = cv2.BORDER_DEFAULT
+    # Note: pyrDown removes even pixels, which may introduce a bias towards the
+    # bottom right of the image.
+    for _ in range(k):
+        a = cv2.pyrDown(a, borderType=borderType)
+    return a
