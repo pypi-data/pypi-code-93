@@ -1,0 +1,92 @@
+# Tooling to see what is happening while Retriever is running. Must be able to globally
+# disable observability to measure performance impact. We need to minimize spam, but allow
+# us to dig deeper into what is happening to investigate issues.
+
+# The observability actor should store all data, but only expose a subset of it by default.
+
+
+"""
+What do we want to see?
+
+- What actions are being taken by each actor
+- See the path of messages through the system
+"""
+
+import json
+from typing import Type
+from types import TracebackType
+import pykka
+
+from retriever_research import messages
+from retriever_research.ticker import Ticker
+from retriever_research.config import Config, LogLevels
+from retriever_research.actors.pykka_extensions.custom_actor import RetrieverThreadingActor
+
+
+class LoggingActor(RetrieverThreadingActor):
+    # This actor must not reference any other actors. It is created before any others.
+    can_log = False
+
+    def __init__(self, output_file="retriever.log"):
+        super().__init__(urn=Config.OBSERVABILITY_URN)
+        self.output_file = output_file
+        self.log_fileobj = open(self.output_file, "w")
+        self.ignore_actor_list = []
+
+    def on_receive(self, msg):
+        assert isinstance(msg, messages.LogMessage)
+
+        if isinstance(msg, messages.LogMessage):
+            structured_log = dict(
+                level=msg.level,
+                log=msg.log,
+                actor=msg.actor,
+                timestamp=msg.timestamp.isoformat(),
+            )
+            if msg.tags and len(msg.tags) > 0:
+                structured_log["tags"] = msg.tags
+            log_line = json.dumps(structured_log)
+            # print(log_line)
+            self.log_fileobj.write(f"{log_line}\n")
+            self.log_fileobj.flush()
+
+    def on_start(self) -> None:
+        pass
+        # print("Observability on stop")
+
+    def on_failure(
+        self,
+        exception_type: Type[BaseException],
+        exception_value: BaseException,
+        traceback: TracebackType,
+    ) -> None:
+        pass
+        # print(f"Observability on failure, {exception_type}, {exception_value}")
+
+
+class ObservabilityTicker(Ticker):
+    def execute(self):
+        actors_to_monitor = [
+            Config.FILE_LIST_GENERATOR_URN,
+            Config.FILE_CHUNKER_URN,
+            Config.PARALLEL_CHUNK_DOWNLOADER_URN,
+            # Config.CHUNK_SEQUENCER_URN
+            Config.FILE_WRITER_URN
+        ]
+
+        outs = []
+        for actor_urn in actors_to_monitor:
+            actor_ref = pykka.ActorRegistry.get_by_urn(actor_urn)
+            # print(actor_urn)
+            try:
+                is_stopped = actor_ref.actor_stopped.is_set()
+            except Exception as e:
+                print(f"Failed to check if actor {actor_urn} has stopped")
+                raise e
+            display_str = "Stopped" if is_stopped else "Running"
+            outs.append({actor_urn: display_str})
+
+        self.mem.logging.log("OBSERVABILITY_TICKER", str(outs), LogLevels.TRACE)
+
+
+
