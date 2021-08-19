@@ -1,0 +1,1 @@
+from .interstitial_instance import InterstitialInstanceSerializer
