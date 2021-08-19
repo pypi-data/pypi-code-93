@@ -1,0 +1,6 @@
+def sig_accept_minion(hub, minion: str, *args, **kwargs):
+    ...
+
+
+def sig_delete_minion(hub, minion: str, *args, **kwargs):
+    ...
