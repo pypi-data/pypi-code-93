@@ -1,0 +1,3 @@
+"""DBIS pipeline Module."""
+
+store = {}
