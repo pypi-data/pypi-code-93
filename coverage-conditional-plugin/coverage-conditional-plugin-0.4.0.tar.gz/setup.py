@@ -1,0 +1,30 @@
+# -*- coding: utf-8 -*-
+from setuptools import setup
+
+packages = \
+['coverage_conditional_plugin']
+
+package_data = \
+{'': ['*']}
+
+install_requires = \
+['coverage>=5.0,<6.0', 'packaging>=20.4']
+
+setup_kwargs = {
+    'name': 'coverage-conditional-plugin',
+    'version': '0.4.0',
+    'description': 'Conditional coverage based on any rules you define!',
+    'long_description': '# coverage-conditional-plugin\n\n[![wemake.services](https://img.shields.io/badge/%20-wemake.services-green.svg?label=%20&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC%2FxhBQAAAAFzUkdCAK7OHOkAAAAbUExURQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP%2F%2F%2F5TvxDIAAAAIdFJOUwAjRA8xXANAL%2Bv0SAAAADNJREFUGNNjYCAIOJjRBdBFWMkVQeGzcHAwksJnAPPZGOGAASzPzAEHEGVsLExQwE7YswCb7AFZSF3bbAAAAABJRU5ErkJggg%3D%3D)](https://wemake.services)\n[![Build Status](https://github.com/wemake-services/coverage-conditional-plugin/workflows/test/badge.svg?branch=master&event=push)](https://github.com/wemake-services/coverage-conditional-plugin/actions?query=workflow%3Atest)\n[![codecov](https://codecov.io/gh/wemake-services/coverage-conditional-plugin/branch/master/graph/badge.svg)](https://codecov.io/gh/wemake-services/coverage-conditional-plugin)\n[![Python Version](https://img.shields.io/pypi/pyversions/coverage-conditional-plugin.svg)](https://pypi.org/project/coverage-conditional-plugin/)\n[![wemake-python-styleguide](https://img.shields.io/badge/style-wemake-000000.svg)](https://github.com/wemake-services/wemake-python-styleguide)\n\nConditional coverage based on any rules you define!\n\nSome projects have different parts that relies on different environments:\n\n- Python version, some code is only executed on specific versions and ignored on others\n- OS version, some code might be Windows, Mac, or Linux only\n- External packages, some code is only executed when some 3rd party package is installed\n\nCurrent best practice is to use `# pragma: no cover` for this places in our project.\nThis project allows to use configurable pragmas\nthat include code to the coverage if some condition evaluates to true,\nand fallback to ignoring this code when condition is false.\n\nRead [the announcing post](https://sobolevn.me/2020/02/conditional-coverage).\n\n\n## Installation\n\n```bash\npip install coverage-conditional-plugin\n```\n\nThen you will need to add to your `setup.cfg` or `.coveragerc` file\nsome extra configuration:\n\n```ini\n[coverage:run]\n# Here we specify plugins for coverage to be used:\nplugins =\n  coverage_conditional_plugin\n\n[coverage:coverage_conditional_plugin]\n# Here we specify our pragma rules:\nrules =\n  "sys_version_info >= (3, 8)": py-gte-38\n  "is_installed(\'mypy\')": has-mypy\n\n```\n\nOr to your `pyproject.toml`:\n```toml\n[tool.coverage.run]\n# Here we specify plugins for coverage to be used:\nplugins = ["coverage_conditional_plugin"]\n\n[tool.coverage.coverage_conditional_plugin.rules]\n# Here we specify our pragma rules:\npy-gte-38 = "sys_version_info >= (3, 8)"\nhas-mypy = "is_installed(\'mypy\')"\n```\n\n\nAdapt rules to suit your needs!\n\n\n## Example\n\nImagine that we have this code:\n\n```python\ntry:  # pragma: has-django\n    import django\nexcept ImportError:  # pragma: has-no-django\n    django = None\n\ndef run_if_django_is_installed():\n    if django is not None:  # pragma: has-django\n        ...\n```\n\nAnd here\'s the configuration you might use:\n\n```ini\n[coverage:coverage_conditional_plugin]\nrules =\n  "is_installed(\'django\')": has-django\n  "not is_installed(\'django\')": has-no-django\n\n```\n\nWhen running tests with and without `django` installed\nyou will have `100%` coverage in both cases.\n\nBut, different lines will be included.\nWith `django` installed it will include\nboth `try:` and `if django is not None:` conditions.\n\nWhen running without `django` installed,\nit will include `except ImportError:` line.\n\n\n## Writing pragma rules\n\nFormat for pragma rules is:\n\n```\n"pragma-condition": pragma-name\n```\n\nCode inside `"pragma-condition"` is evaluted with `eval`.\nMake sure that the input you pass there is trusted!\n`"pragma-condition"` must return `bool` value after evaluation.\n\nWe support all environment markers specified in [PEP-496](https://www.python.org/dev/peps/pep-0496/).\nSee [Strings](https://www.python.org/dev/peps/pep-0496/#strings)\nand [Version Numbers](https://www.python.org/dev/peps/pep-0496/#version-numbers)\nsections for available values. Also, we provide a bunch of additional markers:\n\n- `sys_version_info` is the same as [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info)\n- `os_environ` is the same as [`os.environ`](https://docs.python.org/3/library/os.html#os.environ)\n- `is_installed` is our custom function that tries to import the passed string, returns `bool` value\n- `package_version` is our custom function that tries to get package version from `pkg_resources` and returns its [parsed version](https://packaging.pypa.io/en/latest/version/#packaging.version.parse)\n\nUse `get_env_info` to get values for the current environment:\n\n```python\nfrom coverage_conditional_plugin import get_env_info\n\nget_env_info()\n```\n\n\n## License\n\n[MIT](https://github.com/wemake.services/coverage-conditional-plugin/blob/master/LICENSE)\n\n\n## Credits\n\nThis project was generated with [`wemake-python-package`](https://github.com/wemake-services/wemake-python-package). Current template version is: [a61725009d8399ae77376b5ad9de354214bc1159](https://github.com/wemake-services/wemake-python-package/tree/a61725009d8399ae77376b5ad9de354214bc1159). See what is [updated](https://github.com/wemake-services/wemake-python-package/compare/a61725009d8399ae77376b5ad9de354214bc1159...master) since then.\n',
+    'author': None,
+    'author_email': None,
+    'maintainer': None,
+    'maintainer_email': None,
+    'url': 'https://github.com/wemake-services/coverage-conditional-plugin',
+    'packages': packages,
+    'package_data': package_data,
+    'install_requires': install_requires,
+    'python_requires': '>=3.6,<4.0',
+}
+
+
+setup(**setup_kwargs)
