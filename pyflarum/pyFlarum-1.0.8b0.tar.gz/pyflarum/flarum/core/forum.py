@@ -1,0 +1,243 @@
+from typing import Optional
+
+
+from ..core import BaseFlarumIndividualObject
+from ..core.groups import Group
+
+
+
+class Forum(BaseFlarumIndividualObject):
+    """
+        Entire forum, lives under the main `/api` route.
+    """
+
+
+    @property
+    def title(self) -> Optional[str]:
+        """
+            The forum's title.
+        """
+
+        return self.attributes.get("title", None)
+
+
+    @property
+    def description(self) -> Optional[str]:
+        """
+            The description of the forum.
+        """
+
+        return self.attributes.get("description", None)
+
+
+    @property
+    def showLanguageSelector(self) -> bool:
+        """
+            Whether or not the language selector is available.
+        """
+
+        return self.attributes.get("showLanguageSelector", False)
+
+
+    @property
+    def baseUrl(self) -> Optional[str]:
+        """
+            Base URL of the forum/where the forum is located at.
+        """
+
+        return self.attributes.get("baseUrl", None)
+
+
+    @property
+    def basePath(self) -> Optional[str]:
+        """
+            Base path to the forum.
+        """
+
+        return self.attributes.get("basePath", None)
+
+
+    @property
+    def debug(self) -> bool:
+        """
+            Whether or not debug mode is enabled.
+        """
+
+        return self.attributes.get("debug", False)
+
+
+    @property
+    def apiUrl(self) -> Optional[str]:
+        """
+            The API URL of the forum.
+        """
+
+        return self.attributes.get("apiUrl", None)
+
+
+    @property
+    def welcomeTitle(self) -> Optional[str]:
+        """
+            The title of the welcome message box of the forum.
+        """
+
+        return self.attributes.get("welcomeTitle", None)
+
+
+    @property
+    def welcomeMessage(self) -> Optional[str]:
+        """
+            The welcome message of the forum (shown in the welcome box).
+        """
+
+        return self.attributes.get("welcomeMessage", None)
+
+
+    @property
+    def themePrimaryColor(self) -> Optional[str]:
+        """
+            Forum's primary color in HEX format.
+        """
+
+        return self.attributes.get("themePrimaryColor", None)
+
+
+    @property
+    def themeSecondaryColor(self) -> Optional[str]:
+        """
+            Forum's secondary color in HEX format.
+        """
+
+        return self.attributes.get("themeSecondaryColor", None)
+
+
+    @property
+    def logoUrl(self) -> Optional[str]:
+        """
+            URL to forum's logo.
+        """
+
+        return self.attributes.get("logoUrl", None)
+
+
+    @property
+    def faviconUrl(self) -> Optional[str]:
+        """
+            URL to forum's favicon.
+        """
+
+        return self.attributes.get("faviconUrl", None)
+
+
+    @property
+    def headerHtml(self) -> Optional[str]:
+        """
+            The header HTML of the forum.
+        """
+
+        return self.attributes.get("headerHtml", None)
+
+
+    @property
+    def footerHtml(self) -> Optional[str]:
+        """
+            The footer HTML of the forum.
+        """
+
+        return self.attributes.get("footerHtml", None)
+
+
+    @property
+    def allowSignUp(self) -> bool:
+        """
+            Whether or not signup is allowed.
+        """
+
+        return self.attributes.get("allowSignUp", False)
+
+
+    @property
+    def defaultRoute(self) -> Optional[str]:
+        """
+            The homepage of the forum (default route)
+        """
+
+        return self.attributes.get("defaultRoute", None)
+
+
+    @property
+    def canViewForum(self) -> bool:
+        """
+            Whether or not you are allowed to view the forum.
+        """
+
+        return self.attributes.get("canViewForum", False)
+
+
+    @property
+    def canStartDiscussion(self) -> bool:
+        """
+            Whether or not you are allowed to start a discussion.
+        """
+
+        return self.attributes.get("canStartDiscussion", False)
+
+
+    @property
+    def canSearchUsers(self) -> bool:
+        """
+            Whether or not you are able to search for users.
+        """
+
+        return self.attributes.get("canSearchUsers", False)
+
+
+    @property
+    def adminUrl(self) -> Optional[str]:
+        """
+            The administration panel URL of the forum.
+        """
+
+        return self.attributes.get("adminUrl", None)
+
+
+    @property
+    def version(self) -> Optional[str]:
+        """
+            The Flarum version this forum is running on.
+        """
+
+        return self.attributes.get("version", None)
+
+
+    @property
+    def allowUsernameMentionFormat(self) -> bool:
+        return self.attributes.get("allowUsernameMentionFormat", False)
+
+
+    def get_groups(self) -> list[Group]:
+        """
+            Obtains the forum groups.
+
+            Returns a list of `Group` objects.
+        """
+
+        all_groups = list() # type: list[Group]
+
+        for raw_group in self.relationships.get("groups", {}).get("data", [{}]):
+            if raw_group.get("type", None) == 'groups':
+                group = Group(user=self.user, _fetched_data=dict(data=raw_group))
+
+                all_groups.append(group)
+
+        return all_groups
+
+
+    # Required: `Forum` is not a standard bulk route, so we can't inherit from that.
+    @property
+    def included(self) -> list[dict]:
+        """
+            Raw `list[dict]` of the forum's included objects.
+        """
+
+        return self.get("included", [{}])
