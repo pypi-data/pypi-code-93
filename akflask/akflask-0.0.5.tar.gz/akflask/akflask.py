@@ -1,0 +1,137 @@
+# coding=utf-8
+
+"""
+    @header create_flask.py
+    @abstract   
+    
+    @MyBlog: http://www.kuture.com.cn
+    @author  Created by Kuture on 2021/8/10
+    @version 1.0.0 2021/8/10 Creation()
+    
+    @Copyright © 2021年 Mr.Li All rights reserved
+"""
+import os
+import sys
+import shutil
+import base64
+import argparse
+from datetime import datetime
+
+
+pars = argparse.ArgumentParser(description='Create Flask Project')
+pars.add_argument('--proj_name', type=str, default='MyProject', help='Project Name, Default Is MyProject!')
+pars.add_argument('--proj_dir', default=None, help='Project Dir Path, Default Is None')
+args = pars.parse_args()
+
+
+class AKFlask(object):
+
+    def __init__(self, project_name, project_dir=None):
+
+        dir_name, file = os.path.split(os.path.abspath(sys.argv[0]))
+        if (project_dir is None) or (not os.path.exists(project_dir)):self.project_name = os.path.join(dir_name, project_name)
+        else:self.project_name = os.path.join(project_dir, project_name)
+
+        self.server_log_base_str = 'IyBjb2Rpbmc9dXRmLTgKCiIiIgogICAgQGhlYWRlciBTZXJ2ZXJfbG9nLnB5CiAgICBAYWJzdHJhY3QgICAKICAgIAogICAgQE15QmxvZzogaHR0cDovL3d3dy5rdXR1cmUuY29tLmNuCiAgICBAYXV0aG9yICBDcmVhdGVkIGJ5IEt1dHVyZSBvbiAyMDIxLzgvOQogICAgQHZlcnNpb24gMS4wLjAgMjAyMS84LzkgQ3JlYXRpb24oKQogICAgCiAgICBAQ29weXJpZ2h0IMKpIDIwMjHlubQgTXIuTGkgQWxsIHJpZ2h0cyByZXNlcnZlZAoiIiIKaW1wb3J0IGxvZ2dpbmcKZnJvbSBsb2dnaW5nIGltcG9ydCBoYW5kbGVycwoKbGV2ZWxfcmVsYXRpb25zID0gewogICAgJ2RlYnVnJzogbG9nZ2luZy5ERUJVRywKICAgICdpbmZvJzogbG9nZ2luZy5JTkZPLAogICAgJ3dhcm5pbmcnOiBsb2dnaW5nLldBUk5JTkcsCiAgICAnZXJyb3InOiBsb2dnaW5nLkVSUk9SLAogICAgJ2NyaXQnOiBsb2dnaW5nLkNSSVRJQ0FMCn0gICMgbG9nIGxldmVsIGRpY3QKCnByb2plY3RfbmFtZSA9ICdhaXNlcnZlcmZsYXNrJyAgIyBwcm9qZWN0IG5hbWUgZm9yIHJlY29nbml0aW9uIGxvZ28KCgpjbGFzcyBMb2dnZXIob2JqZWN0KToKCiAgICBkZWYgX19pbml0X18oc2VsZiwgbGV2ZWw9J2RlYnVnJywgZmlsZW5hbWU9Tm9uZSwgd2hlbj0nVycsIGJhY2tDb3VudD0yMCk6CgogICAgICAgIGlmIGZpbGVuYW1lIGlzIE5vbmU6CiAgICAgICAgICAgIHJldHVybgoKICAgICAgICAjICBsb2cgZm9ybWF0CiAgICAgICAgIyBmbXQgPSAnJShhc2N0aW1lKXMgLSAlKGZpbGVuYW1lKXNbbGluZTolKGxpbmVubylkXSAtICUobGV2ZWxuYW1lKXM6ICUobWVzc2FnZSlzJwogICAgICAgIGZtdCA9ICclKGFzY3RpbWUpcyAtIFtsaW5lOiUobGluZW5vKWRdIC0gJShsZXZlbG5hbWUpczogJShtZXNzYWdlKXMnCiAgICAgICAgIyBsb2cgYWJzb2x1dGUgcGF0aAoKICAgICAgICBzZWxmLmxvZ2dlciA9IGxvZ2dpbmcuZ2V0TG9nZ2VyKGZpbGVuYW1lKQoKICAgICAgICBmb3JtYXRfc3RyID0gbG9nZ2luZy5Gb3JtYXR0ZXIoZm10KSAgIyBzZXR0aW5nIGxvZyBmb3JtYXQKICAgICAgICBzZWxmLmxvZ2dlci5zZXRMZXZlbChsZXZlbF9yZWxhdGlvbnMuZ2V0KGxldmVsKSkgICMgc2V0dGluZyBsb2cgbGV2ZWwKICAgICAgICBzaCA9IGxvZ2dpbmcuU3RyZWFtSGFuZGxlcigpICAjIGRpc3BsYXkgaW4gdGVybWluYWwKICAgICAgICBzaC5zZXRGb3JtYXR0ZXIoZm9ybWF0X3N0cikgICMgc2V0dGluZyBkaXNwbGF5IGZvcm1hdAoKICAgICAgICAjIHdyaXRlIGxvZyBpbiBmaWxlLCBzZXR0aW5nIHRpbWUgaW50ZXJ2YWwgZm9yIGF1dG8gZ2VuZXJhdGUgZmlsZQogICAgICAgICMgdGggPSBoYW5kbGVycy5UaW1lZFJvdGF0aW5nRmlsZUhhbmRsZXIoZmlsZW5hbWU9ZmlsZW5hbWUsIHdoZW49d2hlbiwgYmFja3VwQ291bnQ9YmFja0NvdW50LAogICAgICAgICMgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZW5jb2Rpbmc9J3V0Zi04JykKICAgICAgICAjIHRoLnNldEZvcm1hdHRlcihmb3JtYXRfc3RyKSAgIyBzZXR0aW5nIHdyaXRpbmcgZm9tYXRlCgogICAgICAgICMgYXV0byBnZW5lcmF0ZSBmaWxlIGZvciBjb250cm9sIGZpbGUgc2l6ZSBhbmQgY291bnQKICAgICAgICBzaXplX3RoID0gaGFuZGxlcnMuUm90YXRpbmdGaWxlSGFuZGxlcihmaWxlbmFtZSwgbWF4Qnl0ZXM9NSoxMDI0KjEwMjQsIGJhY2t1cENvdW50PWJhY2tDb3VudCkKICAgICAgICBzaXplX3RoLnNldEZvcm1hdHRlcihmb3JtYXRfc3RyKQoKICAgICAgICAjIGFkZCBvYmplY3QgdG8gbG9nZ2VyCiAgICAgICAgc2VsZi5sb2dnZXIuYWRkSGFuZGxlcihzaXplX3RoICkgICMgc2l6ZSBmb3JtYXQKICAgICAgICAjIHNlbGYubG9nZ2VyLmFkZEhhbmRsZXIodGgpICAjIHRpbWUgZm9ybWF0CiAgICAgICAgc2VsZi5sb2dnZXIuYWRkSGFuZGxlcihzaCk='
+        self.server_conf_base_str = 'IyBjb2Rpbmc9dXRmLTgKCiIiIgogICAgQGhlYWRlciBjb25maWcucHkKICAgIEBhYnN0cmFjdCAgIAogICAgCiAgICBATXlCbG9nOiBodHRwOi8vd3d3Lmt1dHVyZS5jb20uY24KICAgIEBhdXRob3IgIENyZWF0ZWQgYnkgS3V0dXJlIG9uIDIwMjEvOC85CiAgICBAdmVyc2lvbiAxLjAuMCAyMDIxLzgvOSBDcmVhdGlvbigpCiAgICAKICAgIEBDb3B5cmlnaHQgwqkgMjAyMeW5tCBNci5MaSBBbGwgcmlnaHRzIHJlc2VydmVkCiIiIgppbXBvcnQgb3MKaW1wb3J0IHN5cwpmcm9tIE1vZHVsZXMuU2VydmVyX2xvZyBpbXBvcnQgTG9nZ2VyCmZyb20gZmxhc2sgaW1wb3J0IG1ha2VfcmVzcG9uc2UsIGpzb25pZnkKCgp0cnk6CiAgICBkaXJuYW1lLCBmaWxlID0gb3MucGF0aC5zcGxpdChvcy5wYXRoLmFic3BhdGgoc3lzLmFyZ3ZbMF0pKQogICAgbG9nX2RpciA9IG9zLnBhdGguam9pbihkaXJuYW1lLCAnTG9nJykKICAgIGlmIG5vdCBvcy5wYXRoLmV4aXN0cyhsb2dfZGlyKToKICAgICAgICBvcy5ta2Rpcihsb2dfZGlyKQpleGNlcHQgRXhjZXB0aW9uIGFzIGVycm9yOgogICAgbG9nX2RpciA9IG9zLnBhdGguZXhwYW5kdXNlcignficpCiAgICBsb2cgPSBMb2dnZXIoJ2luZm8nLCBvcy5wYXRoLmpvaW4obG9nX2RpciwgJ1NlcnZlci5sb2cnKSkgICMgbG9nIGluc3RhbnRpYXRpb24KICAgIGxvZy5sb2dnZXIuZXJyb3IoJ0NyZWF0ZSBMb2cgRGlyIEVycm9yLCBOZXcgTG9nIFBhdGg6e30nLmZvcm1hdChvcy5wYXRoLmpvaW4obG9nX2RpciwgJ1NlcnZlci5sb2cnKSkpCgpsb2cgPSBMb2dnZXIoJ2luZm8nLCBvcy5wYXRoLmpvaW4obG9nX2RpciwgJ1NlcnZlci5sb2cnKSkgICMgbG9nIGluc3RhbnRpYXRpb24KCkRFRkFVTFRfSVAgPSAnMTI3LjAuMC4xJwpERUZBVUxUX1BPUlQgPSAnODg2NicKCgpjbGFzcyBBYnNvbHV0ZVBhdGgob2JqZWN0KToKCiAgICAjIHByb2Nlc3NvciBmaWxlIGFic29sdXRlIHBhdGgKICAgIGRlZiBwcm9jZXNzb3JGaWxlQWJzb2x1dGVQYXRoKHNlbGYsIGZpbGVuYW1lKToKICAgICAgICBkaXJuYW1lLCBmaWxlID0gb3MucGF0aC5zcGxpdChvcy5wYXRoLmFic3BhdGgoc3lzLmFyZ3ZbMF0pKQogICAgICAgIHByb2Nlc3Nvcl9maWxlX3BhdGggPSBvcy5wYXRoLmpvaW4oZGlybmFtZSwgZmlsZW5hbWUpCgogICAgICAgIHJldHVybiBwcm9jZXNzb3JfZmlsZV9wYXRoCgogICAgIyBzdGF0aWMgcmVzb3VyY2UgYWJzb2x1dGUgcGF0aAogICAgZGVmIHN0YXRpY1Jlc291cmNlQWJzb2x1dGVQYXRoKHNlbGYsIGZpbGVuYW1lKToKICAgICAgICBkaXJuYW1lLCBmaWxlID0gb3MucGF0aC5zcGxpdChvcy5wYXRoLmFic3BhdGgoc3lzLmFyZ3ZbMF0pKQogICAgICAgIHN0YXRpY19maWxlX3BhdGggPSBvcy5wYXRoLmpvaW4oZGlybmFtZSwgJ1Jlc291cmNlJykKICAgICAgICBzdGF0aWNfZmlsZV9wYXRoID0gb3MucGF0aC5qb2luKHN0YXRpY19maWxlX3BhdGgsIGZpbGVuYW1lKQoKICAgICAgICByZXR1cm4gc3RhdGljX2ZpbGVfcGF0aAoKICAgICMgcm9vdCBhYnNvbHV0ZSBkaXIgcGF0aAogICAgZGVmIHJvb3RBYnNvbHV0ZVBhdGgoc2VsZiwgZGlycyk6CiAgICAgICAgZGlybmFtZSwgZmlsZSA9IG9zLnBhdGguc3BsaXQob3MucGF0aC5hYnNwYXRoKHN5cy5hcmd2WzBdKSkKICAgICAgICBkaXJuYW1lID0gb3MucGF0aC5qb2luKGRpcm5hbWUsIGRpcnMpCiAgICAgICAgaWYgbm90IG9zLnBhdGguZXhpc3RzKGRpcm5hbWUpOgogICAgICAgICAgICBvcy5ta2RpcihkaXJuYW1lKQoKICAgICAgICByZXR1cm4gZGlybmFtZQoKCmNsYXNzIFNlcnZlclRvb2xzKG9iamVjdCk6CgogICAgIyDot6jln58KICAgIGRlZiBjcm9zc19kb21haW4oc2VsZiwgcmVzcG9uc2UpOgogICAgICAgIHJlc3BvbnNlID0gbWFrZV9yZXNwb25zZShqc29uaWZ5KHJlc3BvbnNlKSkKICAgICAgICByZXNwb25zZS5oZWFkZXJzWydBY2Nlc3MtQ29udHJvbC1BbGxvdy1PcmlnaW4nXSA9ICcqJwogICAgICAgIHJlc3BvbnNlLmhlYWRlcnNbJ0FjY2Vzcy1Db250cm9sLUFsbG93LU1ldGhvZCddID0gJyonCiAgICAgICAgcmVzcG9uc2UuaGVhZGVyc1snQWNjZXNzLUNvbnRyb2wtQWxsb3ctSGVhZGVycyddID0gJyonCiAgICAgICAgcmV0dXJuIHJlc3BvbnNlCgoKCgoKCgoKCgoKCgoKCgoKCgoK'
+        self.server_views_base_str = 'IyBjb2Rpbmc9dXRmLTgKCiIiIgogICAgQGhlYWRlciB2aWV3cy5weQogICAgQGFic3RyYWN0ICAgCiAgICAKICAgIEBNeUJsb2c6IGh0dHA6Ly93d3cua3V0dXJlLmNvbS5jbgogICAgQGF1dGhvciAgQ3JlYXRlZCBieSBLdXR1cmUgb24gMjAyMS84LzkKICAgIEB2ZXJzaW9uIDEuMC4wIDIwMjEvOC85IENyZWF0aW9uKCkKICAgIAogICAgQENvcHlyaWdodCDCqSAyMDIx5bm0IE1yLkxpIEFsbCByaWdodHMgcmVzZXJ2ZWQKIiIiCmZyb20gZmxhc2sgaW1wb3J0IEJsdWVwcmludApmcm9tIGNvbmZpZyBpbXBvcnQgU2VydmVyVG9vbHMKCgptYWluX2FwcCA9IEJsdWVwcmludCgnbWFpbl9hcHAnLCBfX25hbWVfXykKbG9nID0gbWFpbl9hcHAucm91dGUoJ2xvZycpCnRvb2xzID0gU2VydmVyVG9vbHMoKQoKCkBtYWluX2FwcC5yb3V0ZSgnLycsIG1ldGhvZHM9WydHRVQnXSkKZGVmIGluZGV4KCk6CgogICAgbG9nLmxvZ2dlci5pbmZvKCdbIDEwMDAwIF0gLSBtYWluX2FwcCB1cmwuLi4nKQoKICAgIHJldHVybiB0b29scy5jcm9zc19kb21haW4oeydzdWNjZXNzJzoxMDAwfSkKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo='
+        self.server_manager_base_str = 'IyBjb2Rpbmc9dXRmLTgKCiIiIgogICAgQGhlYWRlciBtYW5hZ2VyLnB5CiAgICBAYWJzdHJhY3QKCiAgICBATXlCbG9nOiBodHRwOi8vd3d3Lmt1dHVyZS5jb20uY24KICAgIEBhdXRob3IgIENyZWF0ZWQgYnkgS3V0dXJlIG9uIDIwMjEvOC85CiAgICBAdmVyc2lvbiAxLjAuMCAyMDIxLzgvOSBDcmVhdGlvbigpKCkKCiAgICBAQ29weXJpZ2h0IMKpIDIwMjHlubQgTXIuTGkgQWxsIHJpZ2h0cyByZXNlcnZlZAoiIiIKaW1wb3J0IG9zCmltcG9ydCBjb25maWcKCmxvZyA9IGNvbmZpZy5sb2cKbG9nLmxvZ2dlci5pbmZvKCcnKQpsb2cubG9nZ2VyLmluZm8oJ1sgMDAwMDAgXSAtIHt9U3RhcnQgTWFuYWdlciBTZXJ2aWNle30nLmZvcm1hdCgnLScgKiAyMCwgJy0nICogMjApKQoKJycnLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLSBJbml0IFNlcnZlciBBbmQgQmx1ZXByaW50IC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0nJycKdHJ5OgogICAgaW1wb3J0IGpzb24KICAgIGltcG9ydCB0aW1lCiAgICBmcm9tIGNvbmZpZyBpbXBvcnQgQWJzb2x1dGVQYXRoLCBTZXJ2ZXJUb29scwogICAgZnJvbSBBUFAuTWFpbiBpbXBvcnQgdmlld3MgYXMgbWFpbl92aWV3CiAgICBmcm9tIGZsYXNrIGltcG9ydCBGbGFzaywgcmVxdWVzdCwganNvbmlmeSwgc2VuZF9mcm9tX2RpcmVjdG9yeSwgc2Vzc2lvbiwgbWFrZV9yZXNwb25zZQoKICAgIGFwcCA9IEZsYXNrKF9fbmFtZV9fKQogICAgYXBwLmRlYnVnID0gRmFsc2UKICAgIGFwcC5zZWNyZXRfa2V5ID0gJ1VNU0FJJwoKICAgICMgSW5pdCBTZXJ2ZXIgdG9vbHMKICAgIGFic29sdXRlX2NvbmZpZyA9IEFic29sdXRlUGF0aCgpCgogICAgIyBJbml0IGJsdWVwcmludAogICAgYXBwLnJlZ2lzdGVyX2JsdWVwcmludChtYWluX3ZpZXcubWFpbl9hcHAsIHVybF9wcmVmaXg9Jy9tYWluJywgKip7J2xvZyc6IGxvZ30pICAjICoqeydsb2cnfeS4uuS8oOmAkueahOWPguaVsAogICAgbWFpbl92aWV3LmxvZyA9IGxvZwoKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlcnJvcjoKICAgIGVycm9yX21zZyA9ICdbIDAwMDAxIF0gLSBMb2FkIEZsYXNrIEFuZCBDb25maWcgRXJyb3I6e30nLmZvcm1hdChlcnJvcikKICAgIGxvZy5sb2dnZXIuZXJyb3IoZXJyb3JfbXNnKQogICAgcmFpc2UgRXhjZXB0aW9uKGVycm9yX21zZykKZWxzZToKICAgIGxvZy5sb2dnZXIuaW5mbygnWyAwMDAwMiBdIC0gTG9hZGVkIEZsYXNrIEFuZCBDb25maWcgLi4uJykKCicnJy0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0gTG9hZCBNYWluIEZ1bmN0aW9uIENsYXNzIC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tJycnCnRyeToKICAgIHBhc3MKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlcnJvcjoKICAgIGVycm9yX21zZyA9ICdbIDAwMDAzIF0gLSBMb2FkZWQgeHh4IEZ1bmN0aW9uIEVycm9yOnt9Jy5mb3JtYXQoZXJyb3IpCiAgICBsb2cubG9nZ2VyLmVycm9yKGVycm9yX21zZykKICAgIHJhaXNlIEV4Y2VwdGlvbihlcnJvcl9tc2cpCmVsc2U6CiAgICBsb2cubG9nZ2VyLmluZm8oJ1sgMDAwMDQgXSAtIExvYWRlZCB4eHggLi4uJykKCicnJy0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0gaW5pdCBnbG9iYWwgdmFyaWFibGXvvIwgY3JlYXRlIGZvbGRlciwgc3RhdGljIHJlc291cmNlIC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0nJycKdHJ5OgogICAgIyBDaGVjayBSZXNvdXJjZSBGb2xkZXIsSWYgSXQgRG9lcyBOb3QgRXhpc3QsIENyZWF0ZQogICAgcmVzb3VyY2VfZm9sZGVyX3BhdGggPSBhYnNvbHV0ZV9jb25maWcucm9vdEFic29sdXRlUGF0aCgnUmVzb3VyY2UnKQogICAgdGVtcG9yYXJ5X2ZvbGRlcl9wYXRoID0gYWJzb2x1dGVfY29uZmlnLnJvb3RBYnNvbHV0ZVBhdGgoJ1RlbXBvcmFyeScpICAjIENyZWF0ZSBUZW1wb3JhcnkgRm9sZGVyCgpleGNlcHQgRXhjZXB0aW9uIGFzIGVycm9yOgogICAgZXJyb3JfbXNnID0gJ1sgMDAwMDUgXSAtIEluaXQgR2xvYmFsIEVycm9yOnt9Jy5mb3JtYXQoZXJyb3IpCiAgICBsb2cubG9nZ2VyLmVycm9yKGVycm9yX21zZykKICAgIHJhaXNlIEV4Y2VwdGlvbihlcnJvcl9tc2cpCmVsc2U6CiAgICBsb2cubG9nZ2VyLmluZm8oJ1sgMDAwMDYgXSAtIEluaXQgR2xvYmFsIC4uLicpCiAgICBsb2cubG9nZ2VyLmluZm8oJ1sgMDAwMDcgXSAtIFJlc291cmNlIERpciBQYXRoOnt9Jy5mb3JtYXQocmVzb3VyY2VfZm9sZGVyX3BhdGgpKQogICAgbG9nLmxvZ2dlci5pbmZvKCdbIDAwMDA4IF0gLSBUZW1wb3JhcnkgRGlyIFBhdGg6e30nLmZvcm1hdCh0ZW1wb3JhcnlfZm9sZGVyX3BhdGgpKQoKCmRlZiBtYWluKCk6CiAgICB0cnk6CiAgICAgICAgYXBwLnJ1bihob3N0PWNvbmZpZy5ERUZBVUxUX0lQLCBwb3J0PWNvbmZpZy5ERUZBVUxUX1BPUlQpCiAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGVycm9yOgogICAgICAgIGxvZy5sb2dnZXIuZXJyb3IoJ1sgMDAwMjIgXSAtIEFJIFNlcnZlciBDYW4gTm90IExhdW5jaDoge30nLmZvcm1hdChlcnJvcikpCiAgICAgICAgZGVmYXVsdF9wb3J0ID0gaW50KGNvbmZpZy5ERUZBVUxUX1BPUlQpICsgMgogICAgICAgIHRyeToKICAgICAgICAgICAgbG9nLmxvZ2dlci5pbmZvKCdbIDAwMDIzIF0gLSBUcnkgTGF1bmNoIFNlcnZlciBXaXRoIE5ldyBQb3J0OiB7fScuZm9ybWF0KGRlZmF1bHRfcG9ydCkpCiAgICAgICAgICAgIGFwcC5ydW4oaG9zdD1jb25maWcuREVGQVVMVF9JUCwgcG9ydD1kZWZhdWx0X3BvcnQpCiAgICAgICAgICAgIGxvZy5sb2dnZXIuaW5mbygnWyAwMDAyNCBdIC0gTmV3IFBvcnQ6IHt9IExhdW5jaCBTdWNjZXNzZnVsIScuZm9ybWF0KGRlZmF1bHRfcG9ydCkpCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlcnJvcjoKICAgICAgICAgICAgbG9nLmxvZ2dlci5lcnJvcignWyAwMDAyNSBdIC0gVGVtcG9yYXJ5IElQIEVycm9yOnt9Jy5mb3JtYXQoZXJyb3IpKQoKICAgICAgICBsb2cubG9nZ2VyLmVycm9yKCdbIDAwMDI2IF0gLSBUcnkgTGF1bmNoIFNlcnZlciBFcnJvciwgJwogICAgICAgICAgICAgICAgICAgICAgICAgJ1BsZWFzZSBDaGVjayBQb3J0IHt9IGFuZCBSZXN0YXJ0IFRoZSBTZXJ2ZXInLmZvcm1hdChjb25maWcuREVGQVVMVF9QT1JUKSkKCgppZiBfX25hbWVfXyA9PSAnX19tYWluX18nOgogICAgbWFpbigpCgoKCgoKCgoKCgo='
+
+        print(self.generate_print_str('创建工程 {}'.format(self.project_name)))
+        if os.path.exists(self.project_name):
+            input_str = input('{} is exist, recover or not(y/n)'.format(self.project_name))
+            if input_str.lower() == 'y':
+                shutil.rmtree(self.project_name)
+        os.mkdir(self.project_name)
+
+    # generate print str
+    def generate_print_str(self, label_str):
+        new_label = '{}{}'.format('-' * (50 - len(label_str)), label_str)
+        return new_label
+
+    # generate python file
+    def generate_file(self, file_path, file_content):
+
+        if isinstance(file_content, bytes):file_content = file_content.decode()
+        file_content = file_content.replace('2021/8/9', '{}'.format(str(datetime.now()).split()[0]))
+        with open(file_path, 'w') as sf:
+            sf.write(file_content)
+
+    # create Modules
+    def create_modules(self):
+        print(self.generate_print_str('创建模块 Modules'))
+        modules_path = os.path.join(self.project_name, 'Modules')
+        modules_init_path = os.path.join(modules_path, '__init__.py')
+        modules_log_path = os.path.join(modules_path, 'Server_log.py')
+
+        os.mkdir(modules_path)
+        self.generate_file(modules_init_path, '')
+        self.generate_file(modules_log_path, base64.b64decode(self.server_log_base_str))
+
+    # create Package
+    def create_package(self):
+        print(self.generate_print_str('创建模块 Package'))
+        package_path = os.path.join(self.project_name, 'Package')
+        package_init_path = os.path.join(package_path, '__init__.py')
+
+        os.mkdir(package_path)
+        self.generate_file(package_init_path, '')
+
+    # create app
+    def create_app(self):
+
+        print(self.generate_print_str('创建模块 APP'))
+        app_path = os.path.join(self.project_name, 'APP')
+        app_main_dir_path = os.path.join(app_path, 'Main')
+        app_main_init_path = os.path.join(app_main_dir_path, '__init__.py')
+        app_main_views_path = os.path.join(app_main_dir_path, 'views.py')
+
+        os.mkdir(app_path)
+        os.mkdir(app_main_dir_path)
+        self.generate_file(app_main_init_path, '')
+        self.generate_file(app_main_views_path, base64.b64decode(self.server_views_base_str))
+
+    # create config file
+    def create_config(self):
+
+        print(self.generate_print_str('创建文件 config'))
+        config_path = os.path.join(self.project_name, 'config.py')
+        self.generate_file(config_path, base64.b64decode(self.server_conf_base_str))
+
+    # create manager file
+    def create_manager(self):
+
+        print(self.generate_print_str('创建文件 manager'))
+        manager_path = os.path.join(self.project_name, 'manager.py')
+        self.generate_file(manager_path, base64.b64decode(self.server_manager_base_str))
+
+    # create all
+    def main_create(self):
+        self.create_modules()
+        self.create_package()
+        self.create_app()
+        self.create_config()
+        self.create_manager()
+
+
+if __name__ == '__main__':
+
+    create_obj = AKFlask(args.proj_name, args.proj_dir)
+    create_obj.main_create()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
