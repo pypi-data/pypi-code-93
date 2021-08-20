@@ -1,0 +1,1 @@
+# Required for post-migrate signal to run
