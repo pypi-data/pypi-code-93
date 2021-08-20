@@ -1,0 +1,247 @@
+#!/usr/bin/python
+import subprocess
+import numpy as np
+import re
+from . import line_data
+from . import model
+from . import rundir_num
+from . import weedout
+from . import private
+import time
+
+MOOG_path = '{}/.pymoog/moog_nosm/moog_nosm_NOV2019/'.format(private.os.environ['HOME'])
+# self.rundir_path = r.rundir_path
+MOOG_file_path = '{}/.pymoog/files/'.format(private.os.environ['HOME'])
+
+class synth(rundir_num.rundir_num):
+    def __init__(self, teff, logg, m_h, start_wav, end_wav, resolution, del_wav=0.02, smooth='g', line_list='ges', weedout=False):
+        '''
+        Initiate a synth Instance and read the parameters.
+        
+        Parameters
+        ----------
+        teff : int
+            The effective temperature of the model
+        logg : float
+            logg value of the model
+        m_h : float
+            [M/H] value (overall metallicity) of the model
+        start_wav : float
+            The start wavelength of synthetic spectra
+        end_wav : float
+            The end wavelength of synthetic spectra
+        resolution : float
+            Resolution of the synthetic spectra; this will passed to MOOG and convolute with initial spectra.
+        line_list : str
+            The name of the linelist file. If not specified will use built-in VALD linelist.
+        weedout : bool or float, default False
+            The switch for running weedout driver before synth. If False then weedout is not run; if True the weedout is run with kappa_ratio=0.0, and if a float (> 0 and < 1) is given then weedout is run with the kappa_ratio set as the number
+        '''
+        super(synth, self).__init__('{}/.pymoog/'.format(private.os.environ['HOME']))
+        self.teff = teff
+        self.logg = logg
+        self.m_h = m_h
+        self.start_wav = start_wav
+        self.end_wav = end_wav
+        self.resolution = resolution
+        self.del_wav = del_wav
+        self.line_list = line_list
+        self.weedout = weedout
+        
+    def prepare_file(self, model_file=None, model_type='moog', loggf_cut=None, abun_change=None, molecules=None, vmicro=2, atmosphere=1, lines=1, smooth_para=None):
+        '''
+        Prepare the model, linelist and control files for MOOG.
+        Can either provide stellar parameters and wavelengths or provide file names.
+        If fine name(s) provided, the files will be copied to working directory for calculation.  
+        
+        Parameters
+        ----------
+        model_file : str, optional
+            The name of the model file. If not specified will use internal Kurucz model.
+             
+        model_type : str, optional
+            The type of the model file. Default is "moog" (then no conversion of format will be done); can be "moog", "kurucz-atlas9" and "kurucz-atlas12". 
+        
+        logf_cut : float, optional
+            The cut in loggf; if specified will only include the lines with loggf >= loggf_cut.
+            
+        abun_change : dict of pairs {int:float, ...}
+            Abundance change, have to be a dict of pairs of atomic number and [X/Fe] values.
+        '''
+        self.lock()
+        
+        subprocess.run(['rm', '-f', self.rundir_path + 'batch.par'])
+        subprocess.run(['rm', '-f', self.rundir_path + 'model.mod'])
+        private.os.system('rm -f ' + self.rundir_path + '*.list')
+        private.os.system('rm -f ' + self.rundir_path + 'MOOG.out*')
+        
+        if smooth_para is None:
+            smooth_para = ['g', 0.0, 0.0, 0.0, 0.0, 0.0]
+        
+        if model_file == None:
+            # Model file is not specified, will download Kurucz model according to stellar parameters.
+            model.interpolate_model(self.teff, self.logg, self.m_h, abun_change=abun_change, molecules=molecules, vmicro=vmicro, to_path=self.rundir_path + 'model.mod')
+            self.model_file = 'model.mod'
+        else:
+            # Model file is specified; record model file name and copy to working directory.
+            if model_type == 'moog':
+                subprocess.run(['cp', model_file, self.rundir_path], encoding='UTF-8', stdout=subprocess.PIPE)
+                self.model_file = model_file.split('/')[-1]
+            elif model_type[:6] == 'kurucz':
+                model.KURUCZ_convert(model_path=model_file, abun_change=abun_change, model_type=model_type[7:], molecules=molecules, converted_model_path=self.rundir_path + 'model.mod')
+                self.model_file = 'model.mod'
+
+        if self.line_list[-5:] != '.list':
+            # Linelist file is not specified, use internal line list;
+            line_list = line_data.read_linelist(self.line_list, loggf_cut=loggf_cut, mode='npy')
+            line_data.save_linelist(line_list, self.rundir_path + 'line.list', wav_start=self.start_wav, wav_end=self.end_wav)
+            self.line_list = 'line.list'
+        elif self.line_list[-5:] == '.list':
+            # Linelist file is specified; record linelist file name and copy to working directory.
+            subprocess.run(['cp', self.line_list, self.rundir_path], encoding='UTF-8', stdout=subprocess.PIPE)
+            self.line_list = self.line_list.split('/')[-1]
+            
+        # Weedout the line list 
+        if self.weedout != False:
+            if self.weedout == True:
+                w = weedout.weedout(self.teff, self.logg, self.m_h, self.start_wav, self.end_wav, line_list=self.rundir_path+self.line_list)
+            else:
+                w = weedout.weedout(self.teff, self.logg, self.m_h, self.start_wav, self.end_wav, kappa_ratio=self.weedout, line_list=self.rundir_path+self.line_list)
+            w.prepare_file()
+            w.run_moog()
+            w.read_linelist()
+            line_data.save_linelist(w.keep_list, self.rundir_path + self.line_list)
+                
+        # Create parameter file.
+        self.create_para_file(atmosphere=atmosphere, lines=lines, del_wav=self.del_wav, smooth_para=smooth_para)    
+        
+    def create_para_file(self, del_wav=0.02, smooth_para=['g', 0.0, 0.0, 0.0, 0.0, 0.0], atmosphere=1, lines=1, molecules=2):
+        '''
+        Function for creating the parameter file of batch.par
+        
+        Parameters
+        ----------
+        del_wav : float, optional
+            The sampling distance of synthetic spectra. Default 0.02.
+        smooth : str, optional
+            Line profile to be used to smooth the synthetic spectra, same as decribed in MOOG documention. Default Gaussian. 
+        '''
+        MOOG_para_file = open(self.rundir_path + '/batch.par', 'w')
+        # Parameter list of MOOG: standard output file (1), summary output file (2), smoothed output file (3),
+        #                         begin wavelength, end wavelength, wavelength step;
+        #                         smoothing function, Gaussian FWHM, vsini, limb darkening coefficient,
+        #                         Macrotrubulent FWHM, Lorentzian FWHM
+        smooth_width = np.mean([self.start_wav / self.resolution, self.end_wav / self.resolution])
+
+        if smooth_para[1] == 0:
+            smooth_para[1] = smooth_width
+
+        # The fitting range is enlarge by smooth_para[1]*2 A, to cover a full range of wavelength without being cut by the smoothing function.
+        MOOG_contant = ["synth\n",
+                        "standard_out       '{}'\n".format('MOOG.out1'),
+                        "summary_out        '{}'\n".format('MOOG.out2'),
+                        "smoothed_out       '{}'\n".format('MOOG.out3'),
+                        "model_in           '{}'\n".format(self.model_file),
+                        "lines_in           '{}'\n".format(self.line_list),
+                        "atmosphere         {}\n".format(atmosphere),
+                        "lines              {}\n".format(lines),
+                        "molecules          {}\n".format(molecules),
+                        "terminal           'x11'\n",
+                        "synlimits\n",
+                        "  {:.2f}  {:.2f}  {}  6.0\n".format(self.start_wav - smooth_para[1]*2, self.end_wav + smooth_para[1]*2, del_wav),
+                        "plot        3\n",
+                        "plotpars    1\n",
+                        "  0.0  0.0  0.0  0.0 \n",
+                        "  0.0  0.0  0.0  0.0 \n",
+                        "  {}  {:.3f}  {:.3f}  {:.3f}  {:.3f}  {:.3f}\n".format(*smooth_para)
+                    ]
+        MOOG_para_file.writelines(MOOG_contant)
+        MOOG_para_file.close()
+    
+    def run_moog(self, output=False, unlock=False):
+        '''
+        Run MOOG and print the reuslt if required.
+
+        Parameters
+        ----------
+        output : boolen, default False
+            If set to True, then print the out put of MOOG.
+
+        Returns
+        ----------
+        None. Three files MOOG.out1, MOOG.out2 and MOOG.out3 will be save in the pymoog working path.
+        '''
+
+        MOOG_run = subprocess.run([MOOG_path + '/MOOGSILENT'], stdout=subprocess.PIPE,
+                                  cwd=self.rundir_path)
+        if unlock:
+            self.unlock()
+        
+        MOOG_run = str(MOOG_run.stdout, encoding = "utf-8").split('\n')
+        MOOG_output = []
+        for i in MOOG_run:
+            if len(i) > 12:
+                ansi_escape = re.compile(r'\x1b\[...H')
+                temp = ansi_escape.sub('', i)
+                ansi_escape = re.compile(r'\x1b\[....H')
+                temp = ansi_escape.sub('', temp)
+                ansi_escape = re.compile(r'\x1b\[H')
+                temp = ansi_escape.sub('', temp)
+                ansi_escape = re.compile(r'\x1b\[2J')
+                MOOG_output.append(ansi_escape.sub('', temp))
+                
+        if output:
+            for i in MOOG_output:
+                print(i)
+        
+        if 'ERROR' in ''.join(MOOG_run):
+            raise ValueError('There is error during the running of MOOG.')
+        
+    def read_spectra(self, type='smooth', unlock=True):
+        '''
+        Read the output spectra of MOOG.
+
+        Parameters
+        ----------
+        type : str, default 'smooth'
+            Decide the type of spectra to be read. 'smooth' will read the smoothed spectra (MOOG.out3), and 'standard' will read the un-smoothed one (MOOG.out2).
+
+        Returns
+        ---------
+        wav : a numpy array
+            An array of wavelength
+        flux : a numpy array
+            An array of flux
+        '''
+        if type == 'standard':
+            models_file = open(self.rundir_path+'MOOG.out2')
+            models = models_file.readline()
+            models = models_file.readline()
+            models = models_file.read().split()
+            models = [float(i) for i in models]
+            x = range(round((models[1]-models[0])/models[2])+1)
+            model_wav = []
+            for i in x:
+                model_wav.append(models[0] + models[2]*i)
+            model_flux = np.array(models[4:])
+            self.wav, self.flux = np.array(model_wav), np.array(model_flux)
+        elif type == 'smooth':
+            models_file = open(self.rundir_path+'MOOG.out3')
+            models = models_file.readline()
+            models = models_file.readline()
+            models = models_file.readlines()
+            wavelength = []
+            depth = []
+            for i in models:
+                temp = i.split()
+                wavelength.append(float(temp[0]))
+                depth.append(float(temp[1]))
+            self.wav, self.flux =  np.array(wavelength), np.array(depth)
+            
+        # Crop the spectra to fit the synthetic wavelength.
+        indices = (self.wav >= self.start_wav) & (self.wav <= self.end_wav) 
+        self.wav = self.wav[indices]
+        self.flux = self.flux[indices]    
+            
+        if unlock:
+            self.unlock()
