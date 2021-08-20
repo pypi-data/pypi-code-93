@@ -1,0 +1,10 @@
+CACHEDOPS = "cachedoperations"
+OPS = "operations"
+SLICEBUILDERS = "slicebuilders"
+
+GENERIC = "slicebuilder"
+SUBPOPULATION = "subpopulation"
+ATTACK = "attack"
+AUGMENTATION = "augmentation"
+TRANSFORMATION = "transformation"
+CURATION = "curated"
