@@ -1,0 +1,1 @@
+from .FAST import main
