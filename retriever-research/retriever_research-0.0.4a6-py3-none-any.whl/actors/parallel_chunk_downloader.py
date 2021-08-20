@@ -1,0 +1,155 @@
+import queue
+import threading
+from typing import cast, Type
+from types import TracebackType
+import multiprocessing as mp
+import boto3
+
+import pykka
+
+from retriever_research import messages
+from retriever_research.config import Config
+from retriever_research.shared_memory import SharedMemory
+from retriever_research.actors import RetrieverThreadingActor
+
+
+# TODO: Pass in an identifier for each process
+def _work_loop(
+        task_queue: mp.Queue,
+        result_queue: mp.Queue,
+        shutdown_queue: mp.Queue,
+):
+    # print("ParallelChunkDownloader._work_loop started")
+    s3_client = boto3.client('s3')
+    while True:
+        try:
+            task = task_queue.get(timeout=Config.ACTOR_QUEUE_GET_TIMEOUT)
+            assert type(task) == messages.ChunkDownloadRequestMsg
+            task = cast(messages.ChunkDownloadRequestMsg, task)
+
+            range_str = f"bytes={task.first_byte}-{task.last_byte}"
+            response = s3_client.get_object(Bucket=task.s3_bucket, Key=task.s3_key, Range=range_str)
+            content = response["Body"].read()
+            result = messages.DownloadedChunkMsg(
+                file_id=task.file_id,
+                seq_id=task.seq_id,
+                total_chunks=task.total_chunks,
+                content=content
+            )
+            result_queue.put(result)
+            continue
+        except queue.Empty:
+            try:
+                shutdown_queue.get(block=False)
+                # print("ParallelChunkDownloader._work_loop received ShutdownMessage, shutting down")
+                return
+            except queue.Empty:
+                continue
+        except KeyboardInterrupt:
+            # print("ParallelChunkDownloader - _work_loop received KeyboardInterrupt, shutting down")
+            return
+        except Exception as e:
+            # print(f"ParallelChunkDownloader._work_loop got Exception, shutting down. {e}")
+            return
+
+
+class ParallelChunkDownloader(RetrieverThreadingActor):
+    use_daemon_thread = True
+
+    def __init__(self, mem: SharedMemory, num_workers=None):
+        super().__init__(urn=Config.PARALLEL_CHUNK_DOWNLOADER_URN)
+        self.mem = mem
+
+        # Can't set ref in init as other actors may not have been created yet
+        self.file_writer_ref = None
+
+        if num_workers is None:
+            num_workers = mp.cpu_count()
+
+        self.num_workers = num_workers
+
+        # Create workers and task queues
+        self.task_queue = mp.Queue()
+        self.result_queue = mp.Queue()
+        self.shutdown_queues = [mp.Queue() for _ in range(self.num_workers)]
+
+        # TODO: Fix client to use correct region.
+        # Note: Instantiating an boto3 client is not multiprocessing safe.
+        # self.boto_clients = [boto3.client('s3') for _ in range(self.num_workers)]
+
+        self.workers = [
+            mp.Process(
+                target=_work_loop,
+                # args=(self.task_queue, self.result_queue, self.shutdown_queues[i], self.boto_clients[i])
+                args=(self.task_queue, self.result_queue, self.shutdown_queues[i])
+            )
+            for i in range(num_workers)]
+
+        # Thread that takes worker results and sends them on to the next actor
+        self._output_forwarder_stop_signal = threading.Event()
+
+        def _forward_results():
+            while not self._output_forwarder_stop_signal.is_set():
+                try:
+                    result = self.result_queue.get(timeout=Config.ACTOR_QUEUE_GET_TIMEOUT)  # type: messages.DownloadedChunkMsg
+                    if self.file_writer_ref is None:
+                        self.file_writer_ref = pykka.ActorRegistry.get_by_urn(Config.FILE_WRITER_URN)
+                        self.log(self.file_writer_ref)
+                    self.file_writer_ref.tell(result)
+                    self.mem.decrement_wip()
+                except queue.Empty:
+                    pass
+
+        self._output_forwarder = threading.Thread(target=_forward_results)
+        self._output_forwarder.name = "ParallelChunkDownloaderOutputForwarder"
+
+    def on_start(self) -> None:
+        self.file_writer_ref = pykka.ActorRegistry.get_by_urn(Config.FILE_WRITER_URN)
+        assert self.file_writer_ref is not None
+
+        self._output_forwarder.start()
+        try:
+            for worker in self.workers:
+                worker.start()
+        except Exception as e:
+            raise e
+        # self.log("on_start completed")
+
+    def on_receive(self, msg):
+        assert type(msg) == messages.ChunkDownloadRequestMsg
+        msg = cast(messages.ChunkDownloadRequestMsg, msg)
+        self.task_queue.put(msg)
+
+    def on_stop(self) -> None:
+        for i in range(self.num_workers):
+            self.shutdown_queues[i].put(True)
+        for worker in self.workers:
+            worker.join()
+
+        # Empty out all of the queues to prevent hanging
+        while True:
+            try:
+                self.task_queue.get(block=False)
+            except queue.Empty:
+                break
+
+        while True:
+            try:
+                self.result_queue.get(block=False)
+            except queue.Empty:
+                break
+
+        self._output_forwarder_stop_signal.set()
+        self._output_forwarder.join()
+
+    def on_failure(
+        self,
+        exception_type: Type[BaseException],
+        exception_value: BaseException,
+        traceback: TracebackType,
+    ) -> None:
+        self._output_forwarder_stop_signal.set()
+        for i in range(self.num_workers):
+            self.shutdown_queues[i].put(True)
+        self._output_forwarder.join()
+
