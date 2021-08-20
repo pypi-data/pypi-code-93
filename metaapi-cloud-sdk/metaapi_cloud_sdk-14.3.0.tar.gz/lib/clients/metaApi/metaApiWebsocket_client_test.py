@@ -1,0 +1,2296 @@
+from .metaApiWebsocket_client import MetaApiWebsocketClient
+from .synchronizationListener import SynchronizationListener
+from socketio import AsyncServer
+from aiohttp import web
+from ...metaApi.models import date, format_date
+from ..httpClient import HttpClient
+import pytest
+import asyncio
+import copy
+import re
+from mock import patch
+from asyncio import sleep
+from urllib.parse import parse_qs
+from mock import MagicMock, AsyncMock
+from copy import deepcopy
+from datetime import datetime, timedelta
+from freezegun import freeze_time
+sio = None
+http_client = HttpClient()
+client: MetaApiWebsocketClient = None
+future_close = asyncio.Future()
+fake_server = None
+empty_hash = 'd41d8cd98f00b204e9800998ecf8427e'
+account_information = {
+    'broker': 'True ECN Trading Ltd',
+    'currency': 'USD',
+    'server': 'ICMarketsSC-Demo',
+    'balance': 7319.9,
+    'equity': 7306.649913200001,
+    'margin': 184.1,
+    'freeMargin': 7120.22,
+    'leverage': 100,
+    'marginLevel': 3967.58283542
+}
+
+
+async def close_client():
+    future_close.set_result(None)
+
+
+class FakeServer:
+
+    def __init__(self):
+        self.app = web.Application()
+        self.runner = None
+
+    async def start(self, port=8080):
+        global sio
+        sio = AsyncServer(async_mode='aiohttp')
+
+        @sio.event
+        async def connect(sid, environ):
+            qs = parse_qs(environ['QUERY_STRING'])
+            if ('auth-token' not in qs) or (qs['auth-token'] != ['token']):
+                environ.emit({'error': 'UnauthorizedError', 'message': 'Authorization token invalid'})
+                environ.close()
+
+        sio.attach(self.app, socketio_path='ws')
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, 'localhost', port)
+        await site.start()
+
+    async def stop(self):
+        await self.runner.cleanup()
+
+
+@pytest.fixture(autouse=True)
+async def run_around_tests():
+    global http_client
+    http_client = HttpClient()
+    FinalMock.__await__ = lambda x: async_magic_close().__await__()
+    global fake_server
+    fake_server = FakeServer()
+    await fake_server.start()
+    global client
+    client = MetaApiWebsocketClient(http_client, 'token', {'application': 'application',
+                                                           'domain': 'project-stock.agiliumlabs.cloud',
+                                                           'requestTimeout': 3, 'useSharedClientApi': True,
+                                                           'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
+                                                                         'maxDelayInSeconds': 0.5}})
+    client.set_url('http://localhost:8080')
+    client._socketInstancesByAccounts = {'accountId': 0}
+    await client.connect()
+    client._resolved = True
+    global future_close
+    future_close = asyncio.Future()
+
+    def return_packet(packet):
+        return [packet]
+
+    client._packetOrderer.restore_order = MagicMock(side_effect=return_packet)
+    yield
+    await client.close()
+    await fake_server.stop()
+    tasks = [task for task in asyncio.all_tasks() if task is not
+             asyncio.tasks.current_task()]
+    list(map(lambda task: task.cancel(), tasks))
+
+
+# This method closes the client once the required socket event has been called
+async def async_magic_close():
+    await close_client()
+
+
+class FinalMock(MagicMock):
+    def __init__(self, *args, **kwargs):
+        super(MagicMock, self).__init__(*args, **kwargs)
+
+
+FinalMock.__await__ = lambda x: async_magic_close().__await__()
+
+
+class TestMetaApiWebsocketClient:
+    @pytest.mark.asyncio
+    async def test_change_client_id_on_reconnect(self):
+        """Should change client id on reconnect."""
+        with freeze_time() as frozen_datetime:
+            frozen_datetime.move_to('2020-10-10 01:00:01.000')
+            connect_amount = 0
+            client_id = None
+            await client.close()
+
+            @sio.event
+            async def connect(sid, environ):
+                async def disconnect():
+                    await asyncio.sleep(0.02)
+                    await sio.disconnect(sid)
+
+                await sio.emit('response', {'type': 'response'})
+                nonlocal connect_amount
+                nonlocal client_id
+                connect_amount += 1
+                qs = parse_qs(environ['QUERY_STRING'])
+                if environ['aiohttp.request'].headers['Client-Id'] != qs['clientId'][0] or \
+                        client_id == qs['clientId'][0]:
+                    pytest.fail()
+                client_id = qs['clientId'][0]
+                if connect_amount < 3:
+                    asyncio.create_task(disconnect())
+
+            await client.connect()
+            await asyncio.sleep(0.05)
+            frozen_datetime.tick(1.5)
+            await asyncio.sleep(0.05)
+            frozen_datetime.tick(1.5)
+            await asyncio.sleep(0.05)
+            assert connect_amount >= 3
+
+    @pytest.mark.asyncio
+    async def test_connect_to_dedicated_server(self):
+        """Should connect to dedicated server."""
+        positions = [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': '2020-04-15T02:45:06.521Z',
+            'updateTime': '2020-04-15T02:45:06.521Z',
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13
+        }]
+        tasks = [task for task in asyncio.all_tasks() if task is not
+                 asyncio.tasks.current_task()]
+        list(map(lambda task: task.cancel(), tasks))
+        await fake_server.stop()
+        fake_server2 = FakeServer()
+        await fake_server2.start(8081)
+        http_client.request = AsyncMock(return_value={'url': 'http://localhost:8081'})
+        client = MetaApiWebsocketClient(http_client, 'token', {'application': 'application',
+                                                               'domain': 'project-stock.agiliumlabs.cloud',
+                                                               'requestTimeout': 3, 'useSharedClientApi': False,
+                                                               'retryOpts': {'retries': 3, 'minDelayInSeconds': 0.1,
+                                                                             'maxDelayInSeconds': 0.5}})
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'positions': positions})
+            else:
+                raise Exception('Wrong request')
+
+        actual = await client.get_positions('accountId')
+        positions[0]['time'] = date(positions[0]['time'])
+        positions[0]['updateTime'] = date(positions[0]['updateTime'])
+        assert actual == positions
+
+    @pytest.mark.asyncio
+    async def test_retrieve_account(self):
+        """Should retrieve MetaTrader account information from API."""
+
+        account_information = {
+            'broker': 'True ECN Trading Ltd',
+            'currency': 'USD',
+            'server': 'ICMarketsSC-Demo',
+            'balance': 7319.9,
+            'equity': 7306.649913200001,
+            'margin': 184.1,
+            'freeMargin': 7120.22,
+            'leverage': 100,
+            'marginLevel': 3967.58283542
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getAccountInformation' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'accountInformation': account_information})
+
+        actual = await client.get_account_information('accountId')
+        assert actual == account_information
+
+    @pytest.mark.asyncio
+    async def test_retrieve_positions(self):
+        """Should retrieve MetaTrader positions from API."""
+
+        positions = [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': '2020-04-15T02:45:06.521Z',
+            'updateTime': '2020-04-15T02:45:06.521Z',
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'positions': positions})
+            else:
+                raise Exception('Wrong request')
+
+        actual = await client.get_positions('accountId')
+        positions[0]['time'] = date(positions[0]['time'])
+        positions[0]['updateTime'] = date(positions[0]['updateTime'])
+        assert actual == positions
+
+    @pytest.mark.asyncio
+    async def test_retrieve_position(self):
+        """Should retrieve MetaTrader position from API."""
+
+        position = {
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': '2020-04-15T02:45:06.521Z',
+            'updateTime': '2020-04-15T02:45:06.521Z',
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getPosition' and data['accountId'] == 'accountId' and data['positionId'] == '46214692' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'position': position})
+
+        actual = await client.get_position('accountId', '46214692')
+        position['time'] = date(position['time'])
+        position['updateTime'] = date(position['updateTime'])
+        assert actual == position
+
+    @pytest.mark.asyncio
+    async def test_retrieve_orders(self):
+        """Should retrieve MetaTrader orders from API."""
+
+        orders = [{
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getOrders' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'orders': orders})
+
+        actual = await client.get_orders('accountId')
+        orders[0]['time'] = date(orders[0]['time'])
+        assert actual == orders
+
+    @pytest.mark.asyncio
+    async def test_retrieve_order(self):
+        """Should retrieve MetaTrader order from API by id."""
+
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getOrder' and data['accountId'] == 'accountId' and data['orderId'] == '46871284' \
+                    and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+
+        actual = await client.get_order('accountId', '46871284')
+        order['time'] = date(order['time'])
+        assert actual == order
+
+    @pytest.mark.asyncio
+    async def test_retrieve_history_orders_by_ticket(self):
+        """Should retrieve MetaTrader history orders from API by ticket."""
+
+        history_orders = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'currentPrice': 1.261,
+            'currentVolume': 0,
+            'doneTime': '2020-04-15T02:45:06.521Z',
+            'id': '46214692',
+            'magic': 1000,
+            'platform': 'mt5',
+            'positionId': '46214692',
+            'state': 'ORDER_STATE_FILLED',
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.260Z',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.07
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getHistoryOrdersByTicket' and data['accountId'] == 'accountId' and \
+                    data['ticket'] == '46214692' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'historyOrders': history_orders,
+                                            'synchronizing': False})
+
+        actual = await client.get_history_orders_by_ticket('accountId', '46214692')
+        history_orders[0]['time'] = date(history_orders[0]['time'])
+        history_orders[0]['doneTime'] = date(history_orders[0]['doneTime'])
+        assert actual == {'historyOrders': history_orders, 'synchronizing': False}
+
+    @pytest.mark.asyncio
+    async def test_retrieve_history_orders_by_position(self):
+        """Should retrieve MetaTrader history orders from API by position."""
+
+        history_orders = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'currentPrice': 1.261,
+            'currentVolume': 0,
+            'doneTime': '2020-04-15T02:45:06.521Z',
+            'id': '46214692',
+            'magic': 1000,
+            'platform': 'mt5',
+            'positionId': '46214692',
+            'state': 'ORDER_STATE_FILLED',
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.260Z',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.07
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getHistoryOrdersByPosition' and data['accountId'] == 'accountId' and \
+                    data['positionId'] == '46214692' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'historyOrders': history_orders,
+                                            'synchronizing': False})
+
+        actual = await client.get_history_orders_by_position('accountId', '46214692')
+        history_orders[0]['time'] = date(history_orders[0]['time'])
+        history_orders[0]['doneTime'] = date(history_orders[0]['doneTime'])
+        assert actual == {'historyOrders': history_orders, 'synchronizing': False}
+
+    @pytest.mark.asyncio
+    async def test_retrieve_history_orders_by_time_range(self):
+        """Should retrieve MetaTrader history orders from API by time range."""
+
+        history_orders = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'currentPrice': 1.261,
+            'currentVolume': 0,
+            'doneTime': '2020-04-15T02:45:06.521Z',
+            'id': '46214692',
+            'magic': 1000,
+            'platform': 'mt5',
+            'positionId': '46214692',
+            'state': 'ORDER_STATE_FILLED',
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.260Z',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.07
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getHistoryOrdersByTimeRange' and data['accountId'] == 'accountId' and \
+                    data['startTime'] == '2020-04-15T02:45:00.000Z' and data['application'] == 'RPC' and \
+                    data['endTime'] == '2020-04-15T02:46:00.000Z' and data['offset'] == 1 and data['limit'] == 100:
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'historyOrders': history_orders,
+                                            'synchronizing': False})
+
+        actual = await client.get_history_orders_by_time_range('accountId', date('2020-04-15T02:45:00.000Z'),
+                                                               date('2020-04-15T02:46:00.000Z'), 1, 100)
+        history_orders[0]['time'] = date(history_orders[0]['time'])
+        history_orders[0]['doneTime'] = date(history_orders[0]['doneTime'])
+        assert actual == {'historyOrders': history_orders, 'synchronizing': False}
+
+    @pytest.mark.asyncio
+    async def test_retrieve_deals_by_ticket(self):
+        """Should retrieve MetaTrader deals from API by ticket."""
+
+        deals = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'commission': -0.25,
+            'entryType': 'DEAL_ENTRY_IN',
+            'id': '33230099',
+            'magic': 1000,
+            'platform': 'mt5',
+            'orderId': '46214692',
+            'positionId': '46214692',
+            'price': 1.26101,
+            'profit': 0,
+            'swap': 0,
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.521Z',
+            'type': 'DEAL_TYPE_BUY',
+            'volume': 0.07
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getDealsByTicket' and data['accountId'] == 'accountId' and \
+                    data['ticket'] == '46214692' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'deals': deals,
+                                            'synchronizing': False})
+
+        actual = await client.get_deals_by_ticket('accountId', '46214692')
+        deals[0]['time'] = date(deals[0]['time'])
+        assert actual == {'deals': deals, 'synchronizing': False}
+
+    @pytest.mark.asyncio
+    async def test_retrieve_deals_by_position(self):
+        """Should retrieve MetaTrader deals from API by position."""
+
+        deals = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'commission': -0.25,
+            'entryType': 'DEAL_ENTRY_IN',
+            'id': '33230099',
+            'magic': 1000,
+            'platform': 'mt5',
+            'orderId': '46214692',
+            'positionId': '46214692',
+            'price': 1.26101,
+            'profit': 0,
+            'swap': 0,
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.521Z',
+            'type': 'DEAL_TYPE_BUY',
+            'volume': 0.07
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getDealsByPosition' and data['accountId'] == 'accountId' and \
+                    data['positionId'] == '46214692' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'deals': deals,
+                                            'synchronizing': False})
+
+        actual = await client.get_deals_by_position('accountId', '46214692')
+        deals[0]['time'] = date(deals[0]['time'])
+        assert actual == {'deals': deals, 'synchronizing': False}
+
+    @pytest.mark.asyncio
+    async def test_retrieve_deals_by_time_range(self):
+        """Should retrieve MetaTrader deals from API by time range."""
+
+        deals = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'commission': -0.25,
+            'entryType': 'DEAL_ENTRY_IN',
+            'id': '33230099',
+            'magic': 1000,
+            'platform': 'mt5',
+            'orderId': '46214692',
+            'positionId': '46214692',
+            'price': 1.26101,
+            'profit': 0,
+            'swap': 0,
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.521Z',
+            'type': 'DEAL_TYPE_BUY',
+            'volume': 0.07
+        }]
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getDealsByTimeRange' and data['accountId'] == 'accountId' and \
+                    data['startTime'] == '2020-04-15T02:45:00.000Z' and data['application'] == 'RPC' and \
+                    data['endTime'] == '2020-04-15T02:46:00.000Z' and data['offset'] == 1 and data['limit'] == 100:
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'deals': deals,
+                                            'synchronizing': False})
+
+        actual = await client.get_deals_by_time_range('accountId', date('2020-04-15T02:45:00.000Z'),
+                                                      date('2020-04-15T02:46:00.000Z'), 1, 100)
+        deals[0]['time'] = date(deals[0]['time'])
+        assert actual == {'deals': deals, 'synchronizing': False}
+
+    @pytest.mark.asyncio
+    async def test_remove_history(self):
+        """Should remove history from API."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'removeHistory' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'app':
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.remove_history('accountId', 'app')
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_remove_application(self):
+        """Should remove application from API."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'removeApplication' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'application':
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.remove_application('accountId')
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_execute_trade(self):
+        """Should execute a trade via new API version."""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07,
+            'expiration': {
+                'type': 'ORDER_TIME_SPECIFIED',
+                'time': date('2020-04-15T02:45:00.000Z')
+            }
+        }
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            assert data['trade'] == trade
+            if data['type'] == 'trade' and data['accountId'] == 'accountId' and data['application'] == 'application':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response})
+
+        actual = await client.trade('accountId', trade)
+        assert actual == response
+
+    @pytest.mark.asyncio
+    async def test_fail_trade_on_old_api(self):
+        """Should execute a trade via API and receive trade error from old API version."""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+        response = {
+            'error': 10006,
+            'description': 'TRADE_RETCODE_REJECT',
+            'message': 'Request rejected',
+            'orderId': '46870472'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            assert data['trade'] == trade
+            if data['type'] == 'trade' and data['accountId'] == 'accountId' and data['application'] == 'application':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response})
+
+        try:
+            await client.trade('accountId', trade)
+            raise Exception('TradeException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TradeException'
+            assert err.__str__() == 'Request rejected'
+            assert err.stringCode == 'TRADE_RETCODE_REJECT'
+            assert err.numericCode == 10006
+
+    @pytest.mark.asyncio
+    async def test_connect_to_terminal(self):
+        """Should connect to MetaTrader terminal."""
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'application' and data['instanceIndex'] == 1:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.subscribe('accountId', 1)
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_create_new_instance(self):
+        """Should create new instance when account limit is reached."""
+        assert len(client.socket_instances) == 1
+        for i in range(100):
+            client._socketInstancesByAccounts['accountId' + str(i)] = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe' and data['accountId'] == 'accountId101' \
+                    and data['application'] == 'application' and data['instanceIndex'] == 1:
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.subscribe('accountId101', 1)
+        assert len(client.socket_instances) == 2
+
+    @pytest.mark.asyncio
+    async def test_return_error_if_failed(self):
+        """Should return error if connect to MetaTrader terminal failed."""
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribe' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'application':
+                nonlocal request_received
+                request_received = True
+            await sio.emit('processingError', {'id': 1, 'error': 'NotAuthenticatedError', 'message': 'Error message',
+                                               'requestId': data['requestId']})
+
+        success = True
+        try:
+            await client.subscribe('accountId')
+            await asyncio.sleep(0.05)
+            success = False
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotConnectedException'
+        assert success
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_reconnect_to_terminal(self):
+        """Should reconnect to MetaTrader terminal."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'reconnect' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'application':
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.reconnect('accountId')
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_retrieve_symbols(self):
+        """Should retrieve symbols from API."""
+        symbols = ['EURUSD']
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getSymbols' and data['accountId'] == 'accountId' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'symbols': symbols})
+
+        actual = await client.get_symbols('accountId')
+        assert actual == symbols
+
+    @pytest.mark.asyncio
+    async def test_retrieve_symbol_specification(self):
+        """Should retrieve symbol specification from API."""
+
+        specification = {
+            'symbol': 'AUDNZD',
+            'tickSize': 0.00001,
+            'minVolume': 0.01,
+            'maxVolume': 100,
+            'volumeStep': 0.01
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getSymbolSpecification' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'specification': specification})
+
+        actual = await client.get_symbol_specification('accountId', 'AUDNZD')
+        assert actual == specification
+
+    @pytest.mark.asyncio
+    async def test_retrieve_symbol_price(self):
+        """Should retrieve symbol price from API."""
+
+        price = {
+            'symbol': 'AUDNZD',
+            'bid': 1.05297,
+            'ask': 1.05309,
+            'profitTickValue': 0.59731,
+            'lossTickValue': 0.59736
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getSymbolPrice' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'price': price})
+
+        actual = await client.get_symbol_price('accountId', 'AUDNZD')
+        assert actual == price
+
+    @pytest.mark.asyncio
+    async def test_retrieve_candle(self):
+        """Should retrieve candle from API."""
+
+        candle = {
+          'symbol': 'AUDNZD',
+          'timeframe': '15m',
+          'time': '2020-04-07T03:45:00.000Z',
+          'brokerTime': '2020-04-07 06:45:00.000',
+          'open': 1.03297,
+          'high': 1.06309,
+          'low': 1.02705,
+          'close': 1.043,
+          'tickVolume': 1435,
+          'spread': 17,
+          'volume': 345
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getCandle' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC' and data['timeframe'] == '15m':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'candle': candle})
+
+        actual = await client.get_candle('accountId', 'AUDNZD', '15m')
+        candle['time'] = date(candle['time'])
+        assert actual == candle
+
+    @pytest.mark.asyncio
+    async def test_retrieve_tick(self):
+        """Should retrieve latest tick from API."""
+        tick = {
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'bid': 1.05297,
+            'ask': 1.05309,
+            'last': 0.5298,
+            'volume': 0.13,
+            'side': 'buy'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getTick' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'tick': tick})
+
+        actual = await client.get_tick('accountId', 'AUDNZD')
+        tick['time'] = date(tick['time'])
+        assert actual == tick
+
+    @pytest.mark.asyncio
+    async def test_retrieve_book(self):
+        """Should retrieve latest order book from API."""
+        book = {
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'book': [
+                {
+                    'type': 'BOOK_TYPE_SELL',
+                    'price': 1.05309,
+                    'volume': 5.67
+                },
+                {
+                    'type': 'BOOK_TYPE_BUY',
+                    'price': 1.05297,
+                    'volume': 3.45
+                }
+            ]
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getBook' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'AUDNZD' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'book': book})
+
+        actual = await client.get_book('accountId', 'AUDNZD')
+        book['time'] = date(book['time'])
+        assert actual == book
+
+    @pytest.mark.asyncio
+    async def test_send_uptime_stats(self):
+        """Should send uptime stats to the server."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'saveUptime' and data['accountId'] == 'accountId' and \
+                    data['uptime'] == {'1h': 100} and data['application'] == 'application':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+        await client.save_uptime('accountId', {'1h': 100})
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe(self):
+        """Should unsubscribe from account data."""
+        request_received = False
+
+        response = {'type': 'response', 'accountId': 'accountId'}
+        assert 'accountId' in client.socket_instances_by_accounts
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'unsubscribe' and data['accountId'] == 'accountId':
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'requestId': data['requestId'], **response})
+
+        await client.unsubscribe('accountId')
+        assert request_received
+        assert 'accountId' not in client.socket_instances_by_accounts
+
+    @pytest.mark.asyncio
+    async def test_ignore_not_found_unsubscribe(self):
+        """Should ignore not found exception on unsubscribe."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 1, 'error': 'ValidationError', 'message': 'Validation failed',
+                                               'details': [{'parameter': 'volume', 'message': 'Required value.'}],
+                                               'requestId': data['requestId']})
+
+        try:
+            await client.unsubscribe('accountId')
+            raise Exception('ValidationException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'ValidationException'
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 2, 'error': 'NotFoundError', 'message': 'Account not found',
+                                               'requestId': data['requestId']})
+
+        await client.unsubscribe('accountId')
+
+    @pytest.mark.asyncio
+    async def test_handle_validation_exception(self):
+        """Should handle ValidationError."""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 1, 'error': 'ValidationError', 'message': 'Validation failed',
+                           'details': [{'parameter': 'volume', 'message': 'Required value.'}],
+                                               'requestId': data['requestId']})
+
+        try:
+            await client.trade('accountId', trade)
+            raise Exception('ValidationError expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'ValidationException'
+
+    @pytest.mark.asyncio
+    async def test_handle_not_found_exception(self):
+        """Should handle NotFoundError."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError',  {'id': 1, 'error': 'NotFoundError',
+                                                'message': 'Position id 1234 not found',
+                                                'requestId': data['requestId']})
+
+        try:
+            await client.get_position('accountId', '1234')
+            raise Exception('NotFoundException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotFoundException'
+
+    @pytest.mark.asyncio
+    async def test_handle_not_synchronized_exception(self):
+        """Should handle NotSynchronizedError."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 1, 'error': 'NotSynchronizedError', 'message': 'Error message',
+                                               'requestId': data['requestId']})
+
+        try:
+            await client.get_position('accountId', '1234')
+            raise Exception('NotSynchronizedError expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotSynchronizedException'
+
+    @pytest.mark.asyncio
+    async def test_handle_not_connected_exception(self):
+        """Should handle NotSynchronizedError."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 1, 'error': 'NotAuthenticatedError', 'message': 'Error message',
+                                               'requestId': data['requestId']})
+
+        try:
+            await client.get_position('accountId', '1234')
+            raise Exception('NotConnectedError expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotConnectedException'
+
+    @pytest.mark.asyncio
+    async def test_handle_other_exceptions(self):
+        """Should handle other errors."""
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            await sio.emit('processingError', {'id': 1, 'error': 'Error', 'message': 'Error message',
+                                               'requestId': data['requestId']})
+
+        try:
+            await client.get_position('accountId', '1234')
+            raise Exception('InternalError expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'InternalException'
+
+    @pytest.mark.asyncio
+    async def test_process_auth_sync_event(self):
+        """Should process authenticated synchronization event."""
+        listener = MagicMock()
+        listener.on_connected = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1, 'replicas': 2})
+        await future_close
+        listener.on_connected.assert_called_with('1:ps-mpa-1', 2)
+
+    @pytest.mark.asyncio
+    async def test_process_auth_sync_event_with_session_id(self):
+        """Should process authenticated synchronization event with session id."""
+        listener = MagicMock()
+        listener.on_connected = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 2,
+                                           'replicas': 4, 'sessionId': 'wrong', 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'instanceIndex': 1,
+                                           'replicas': 2, 'host': 'ps-mpa-1',
+                                           'sessionId': client._socketInstances[0]['sessionId']})
+        await future_close
+        assert listener.on_connected.call_count == 1
+        listener.on_connected.assert_called_with('1:ps-mpa-1', 2)
+
+    @pytest.mark.asyncio
+    async def test_process_broker_connection_status_event(self):
+        """Should process broker connection status event."""
+        listener = MagicMock()
+        listener.on_connected = AsyncMock()
+        listener.on_broker_connection_status_changed = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1, 'replicas': 1})
+        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'connected': True, 'instanceIndex': 1})
+        await future_close
+        listener.on_broker_connection_status_changed.assert_called_with('1:ps-mpa-1', True)
+
+    @pytest.mark.asyncio
+    async def test_call_disconnect(self):
+        """Should call an on_disconnect if there was no signal for a long time"""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            listener = MagicMock()
+            listener.on_connected = AsyncMock()
+            listener.on_broker_connection_status_changed = AsyncMock()
+            listener.on_disconnected = FinalMock()
+            client.add_synchronization_listener('accountId', listener)
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(0.2)
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(1.1)
+            listener.on_disconnected.assert_not_called()
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sleep(0.2)
+            listener.on_disconnected.assert_not_called()
+            await sleep(1.1)
+            listener.on_disconnected.assert_called_with('1:ps-mpa-1')
+
+    @pytest.mark.asyncio
+    async def test_close_stream_on_timeout(self):
+        """Should close stream on timeout if another stream exists"""
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 50)):
+            listener = MagicMock()
+            listener.on_connected = AsyncMock()
+            listener.on_broker_connection_status_changed = AsyncMock()
+            listener.on_disconnected = FinalMock()
+            listener.on_stream_closed = AsyncMock()
+            client._subscriptionManager.on_timeout = AsyncMock()
+            client._subscriptionManager.on_disconnected = AsyncMock()
+            client.add_synchronization_listener('accountId', listener)
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sleep(0.3)
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'instanceIndex': 1, 'replicas': 2})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(0.3)
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(1.1)
+            listener.on_disconnected.assert_not_called()
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'connected': True, 'instanceIndex': 1})
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            await sleep(0.3)
+            await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                               'connected': True, 'instanceIndex': 1})
+            listener.on_disconnected.assert_not_called()
+            await sleep(1.1)
+            listener.on_stream_closed.assert_called_with('1:ps-mpa-1')
+            listener.on_disconnected.assert_not_called()
+            client._subscriptionManager.on_timeout.assert_not_called()
+            await sleep(0.3)
+            listener.on_disconnected.assert_called_with('1:ps-mpa-2')
+            client._subscriptionManager.on_disconnected.assert_not_called()
+            client._subscriptionManager.on_timeout.assert_called_with('accountId', 1)
+
+    @pytest.mark.asyncio
+    async def test_process_server_health_status(self):
+        """Should process server-side health status event."""
+        listener = MagicMock()
+        listener.on_connected = AsyncMock()
+        listener.on_broker_connection_status_changed = AsyncMock()
+        listener.on_health_status = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1, 'replicas': 1})
+        await sio.emit('synchronization', {'type': 'status', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'connected': True, 'healthStatus': {'restApiHealthy': True},
+                                           'instanceIndex': 1})
+        await future_close
+        listener.on_health_status.assert_called_with('1:ps-mpa-1', {'restApiHealthy': True})
+
+    @pytest.mark.asyncio
+    async def test_process_disconnected_synchronization_event(self):
+        """Should process disconnected synchronization event."""
+
+        listener = MagicMock()
+        listener.on_connected = AsyncMock()
+        listener.on_disconnected = FinalMock()
+        client._subscriptionManager.on_disconnected = AsyncMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1, 'replicas': 1})
+        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1})
+        await future_close
+        client._subscriptionManager.on_disconnected.assert_called_with('accountId', 1)
+        listener.on_disconnected.assert_called_with('1:ps-mpa-1')
+
+    @pytest.mark.asyncio
+    async def test_on_stream_closed(self):
+        """Should close the stream if host name disconnected and another stream exists."""
+
+        listener = MagicMock()
+        listener.on_connected = AsyncMock()
+        listener.on_disconnected = FinalMock()
+        listener.on_stream_closed = AsyncMock()
+        client._subscriptionManager.on_disconnected = AsyncMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1, 'replicas': 2})
+        await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                           'instanceIndex': 1, 'replicas': 2})
+        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'instanceIndex': 1})
+        await asyncio.sleep(0.1)
+        listener.on_stream_closed.assert_called_with('1:ps-mpa-1')
+        listener.on_disconnected.assert_not_called()
+        client._subscriptionManager.on_disconnected.assert_not_called()
+        await sio.emit('synchronization', {'type': 'disconnected', 'accountId': 'accountId', 'host': 'ps-mpa-2',
+                                           'instanceIndex': 1})
+        await future_close
+        listener.on_disconnected.assert_called()
+        client._subscriptionManager.on_disconnected.assert_called_with('accountId', 1)
+
+    @pytest.mark.asyncio
+    async def test_accept_own_packets(self):
+        """Should only accept packets with own synchronization ids."""
+        listener = MagicMock()
+        listener.on_account_information_updated = AsyncMock()
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+                                           'accountInformation': account_information, 'instanceIndex': 1})
+        await asyncio.sleep(0.05)
+        assert listener.on_account_information_updated.call_count == 1
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+                                           'accountInformation': account_information, 'instanceIndex': 1,
+                                           'synchronizationId': 'wrong'})
+        await asyncio.sleep(0.05)
+        assert listener.on_account_information_updated.call_count == 1
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId',
+                                           'accountInformation': account_information, 'instanceIndex': 1,
+                                           'synchronizationId': 'synchronizationId'})
+        await asyncio.sleep(0.05)
+        assert listener.on_account_information_updated.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_synchronize_with_metatrader_terminal(self):
+        """Should synchronize with MetaTrader terminal."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'synchronize' and data['accountId'] == 'accountId' and \
+                    data['host'] == 'ps-mpa-1' and \
+                    data['startingHistoryOrderTime'] == '2020-01-01T00:00:00.000Z' and \
+                    data['startingDealTime'] == '2020-01-02T00:00:00.000Z' and \
+                    data['requestId'] == 'synchronizationId' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.synchronize('accountId', 1, 'ps-mpa-1', 'synchronizationId', date('2020-01-01T00:00:00.000Z'),
+                                 date('2020-01-02T00:00:00.000Z'), empty_hash, empty_hash, empty_hash)
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_process_sync_started(self):
+        """Should process synchronization started event."""
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_positions_synchronized = AsyncMock()
+        listener.on_pending_orders_synchronized = AsyncMock()
+        listener.on_account_information_updated = AsyncMock()
+
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'synchronizationId': 'synchronizationId',
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'accountInformation': account_information, 'instanceIndex': 1})
+        await asyncio.sleep(0.02)
+        listener.on_synchronization_started.assert_called_with(
+            '1:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=True)
+        listener.on_positions_synchronized.assert_not_called()
+        listener.on_pending_orders_synchronized.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_sync_started_without_updating_positions(self):
+        """Should process synchronization started event without updating positions."""
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_positions_synchronized = AsyncMock()
+        listener.on_pending_orders_synchronized = AsyncMock()
+        listener.on_account_information_updated = AsyncMock()
+
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'synchronizationId': 'synchronizationId',
+                                           'positionsUpdated': False, 'ordersUpdated': True,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'accountInformation': account_information, 'instanceIndex': 1,
+                                           'synchronizationId': 'synchronizationId'})
+        await asyncio.sleep(0.02)
+        listener.on_synchronization_started.assert_called_with(
+            '1:ps-mpa-1', specifications_updated=True, positions_updated=False, orders_updated=True)
+        listener.on_positions_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
+        listener.on_pending_orders_synchronized.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_sync_started_without_updating_orders(self):
+        """Should process synchronization started event without updating orders."""
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_positions_synchronized = AsyncMock()
+        listener.on_pending_orders_synchronized = AsyncMock()
+        listener.on_account_information_updated = AsyncMock()
+
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'synchronizationId': 'synchronizationId',
+                                           'positionsUpdated': True, 'ordersUpdated': False,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'accountInformation': account_information, 'instanceIndex': 1,
+                                           'synchronizationId': 'synchronizationId'})
+        await asyncio.sleep(0.02)
+        listener.on_synchronization_started.assert_called_with(
+            '1:ps-mpa-1', specifications_updated=True, positions_updated=True, orders_updated=False)
+        listener.on_positions_synchronized.assert_not_called()
+        listener.on_pending_orders_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
+
+    @pytest.mark.asyncio
+    async def test_synchronize_account_information(self):
+        """Should synchronize account information."""
+        listener = MagicMock()
+        listener.on_account_information_updated = FinalMock()
+
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'accountInformation', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                           'accountInformation': account_information, 'instanceIndex': 1})
+        await future_close
+        listener.on_account_information_updated.assert_called_with('1:ps-mpa-1', account_information)
+
+    @pytest.mark.asyncio
+    async def test_synchronize_positions(self):
+        """Should synchronize positions."""
+
+        positions = [{
+            'id': '46214692',
+            'type': 'POSITION_TYPE_BUY',
+            'symbol': 'GBPUSD',
+            'magic': 1000,
+            'time': '2020-04-15T02:45:06.521Z',
+            'updateTime': '2020-04-15T02:45:06.521Z',
+            'openPrice': 1.26101,
+            'currentPrice': 1.24883,
+            'currentTickValue': 1,
+            'volume': 0.07,
+            'swap': 0,
+            'profit': -85.25999999999966,
+            'commission': -0.25,
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'stopLoss': 1.17721,
+            'unrealizedProfit': -85.25999999999901,
+            'realizedProfit': -6.536993168992922e-13
+        }]
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        listener = MagicMock()
+        listener.on_positions_replaced = AsyncMock()
+        listener.on_positions_synchronized = FinalMock()
+
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'positions', 'accountId': 'accountId', 'positions': positions,
+                                           'synchronizationId': 'synchronizationId',
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await future_close
+        positions[0]['time'] = date(positions[0]['time'])
+        positions[0]['updateTime'] = date(positions[0]['updateTime'])
+        listener.on_positions_replaced.assert_called_with('1:ps-mpa-1', positions)
+        listener.on_positions_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
+
+    @pytest.mark.asyncio
+    async def test_synchronize_orders(self):
+        """Should synchronize orders."""
+
+        orders = [{
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }]
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+        listener = MagicMock()
+        listener.on_pending_orders_replaced = AsyncMock()
+        listener.on_pending_orders_synchronized = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': orders,
+                                           'synchronizationId': 'synchronizationId',
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await future_close
+        orders[0]['time'] = date(orders[0]['time'])
+        listener.on_pending_orders_replaced.assert_called_with('1:ps-mpa-1', orders)
+        listener.on_pending_orders_synchronized.assert_called_with('1:ps-mpa-1', 'synchronizationId')
+
+    @pytest.mark.asyncio
+    async def test_synchronize_history_orders(self):
+        """Should synchronize history orders."""
+
+        history_orders = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'currentPrice': 1.261,
+            'currentVolume': 0,
+            'doneTime': '2020-04-15T02:45:06.521Z',
+            'id': '46214692',
+            'magic': 1000,
+            'platform': 'mt5',
+            'positionId': '46214692',
+            'state': 'ORDER_STATE_FILLED',
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.260Z',
+            'type': 'ORDER_TYPE_BUY',
+            'volume': 0.07
+        }]
+        listener = MagicMock()
+        listener.on_history_order_added = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'historyOrders', 'accountId': 'accountId',
+                                           'historyOrders': history_orders, 'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await future_close
+        history_orders[0]['time'] = date(history_orders[0]['time'])
+        history_orders[0]['doneTime'] = date(history_orders[0]['doneTime'])
+        listener.on_history_order_added.assert_called_with('1:ps-mpa-1', history_orders[0])
+
+    @pytest.mark.asyncio
+    async def test_synchronize_deals(self):
+        """Should synchronize deals."""
+
+        deals = [{
+            'clientId': 'TE_GBPUSD_7hyINWqAlE',
+            'commission': -0.25,
+            'entryType': 'DEAL_ENTRY_IN',
+            'id': '33230099',
+            'magic': 1000,
+            'platform': 'mt5',
+            'orderId': '46214692',
+            'positionId': '46214692',
+            'price': 1.26101,
+            'profit': 0,
+            'swap': 0,
+            'symbol': 'GBPUSD',
+            'time': '2020-04-15T02:45:06.521Z',
+            'type': 'DEAL_TYPE_BUY',
+            'volume': 0.07
+        }]
+        listener = MagicMock()
+        listener.on_deal_added = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'deals', 'accountId': 'accountId', 'deals': deals,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await future_close
+        deals[0]['time'] = date(deals[0]['time'])
+        listener.on_deal_added.assert_called_with('1:ps-mpa-1', deals[0])
+
+    @pytest.mark.asyncio
+    async def test_process_synchronization_updates(self):
+        """Should process synchronization updates."""
+
+        update = {
+            'accountInformation': {
+                'broker': 'True ECN Trading Ltd',
+                'currency': 'USD',
+                'server': 'ICMarketsSC-Demo',
+                'balance': 7319.9,
+                'equity': 7306.649913200001,
+                'margin': 184.1,
+                'freeMargin': 7120.22,
+                'leverage': 100,
+                'marginLevel': 3967.58283542
+            },
+            'updatedPositions': [{
+                'id': '46214692',
+                'type': 'POSITION_TYPE_BUY',
+                'symbol': 'GBPUSD',
+                'magic': 1000,
+                'time': '2020-04-15T02:45:06.521Z',
+                'updateTime': '2020-04-15T02:45:06.521Z',
+                'openPrice': 1.26101,
+                'currentPrice': 1.24883,
+                'currentTickValue': 1,
+                'volume': 0.07,
+                'swap': 0,
+                'profit': -85.25999999999966,
+                'commission': -0.25,
+                'clientId': 'TE_GBPUSD_7hyINWqAlE',
+                'stopLoss': 1.17721,
+                'unrealizedProfit': -85.25999999999901,
+                'realizedProfit': -6.536993168992922e-13
+            }],
+            'removedPositionIds': ['1234'],
+            'updatedOrders': [{
+                'id': '46871284',
+                'type': 'ORDER_TYPE_BUY_LIMIT',
+                'state': 'ORDER_STATE_PLACED',
+                'symbol': 'AUDNZD',
+                'magic': 123456,
+                'platform': 'mt5',
+                'time': '2020-04-20T08:38:58.270Z',
+                'openPrice': 1.03,
+                'currentPrice': 1.05206,
+                'volume': 0.01,
+                'currentVolume': 0.01,
+                'comment': 'COMMENT2'
+            }],
+            'completedOrderIds': ['2345'],
+            'historyOrders': [{
+                'clientId': 'TE_GBPUSD_7hyINWqAlE',
+                'currentPrice': 1.261,
+                'currentVolume': 0,
+                'doneTime': '2020-04-15T02:45:06.521Z',
+                'id': '46214692',
+                'magic': 1000,
+                'platform': 'mt5',
+                'positionId': '46214692',
+                'state': 'ORDER_STATE_FILLED',
+                'symbol': 'GBPUSD',
+                'time': '2020-04-15T02:45:06.260Z',
+                'type': 'ORDER_TYPE_BUY',
+                'volume': 0.07
+            }],
+            'deals': [{
+                'clientId': 'TE_GBPUSD_7hyINWqAlE',
+                'commission': -0.25,
+                'entryType': 'DEAL_ENTRY_IN',
+                'id': '33230099',
+                'magic': 1000,
+                'platform': 'mt5',
+                'orderId': '46214692',
+                'positionId': '46214692',
+                'price': 1.26101,
+                'profit': 0,
+                'swap': 0,
+                'symbol': 'GBPUSD',
+                'time': '2020-04-15T02:45:06.521Z',
+                'type': 'DEAL_TYPE_BUY',
+                'volume': 0.07
+            }]
+        }
+        listener = MagicMock()
+        listener.on_account_information_updated = AsyncMock()
+        listener.on_position_updated = AsyncMock()
+        listener.on_position_removed = AsyncMock()
+        listener.on_pending_order_updated = AsyncMock()
+        listener.on_pending_order_completed = AsyncMock()
+        listener.on_history_order_added = AsyncMock()
+        listener.on_deal_added = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        emit = copy.deepcopy(update)
+        emit['type'] = 'update'
+        emit['accountId'] = 'accountId'
+        emit['instanceIndex'] = 1
+        emit['host'] = 'ps-mpa-1'
+        await sio.emit('synchronization', emit)
+        await future_close
+        update['updatedPositions'][0]['time'] = date(update['updatedPositions'][0]['time'])
+        update['updatedPositions'][0]['updateTime'] = date(update['updatedPositions'][0]['updateTime'])
+        update['updatedOrders'][0]['time'] = date(update['updatedOrders'][0]['time'])
+        update['historyOrders'][0]['time'] = date(update['historyOrders'][0]['time'])
+        update['historyOrders'][0]['doneTime'] = date(update['historyOrders'][0]['doneTime'])
+        update['deals'][0]['time'] = date(update['deals'][0]['time'])
+        listener.on_account_information_updated.assert_called_with('1:ps-mpa-1', update['accountInformation'])
+        listener.on_position_updated.assert_called_with('1:ps-mpa-1', update['updatedPositions'][0])
+        listener.on_position_removed.assert_called_with('1:ps-mpa-1', update['removedPositionIds'][0])
+        listener.on_pending_order_updated.assert_called_with('1:ps-mpa-1', update['updatedOrders'][0])
+        listener.on_pending_order_completed.assert_called_with('1:ps-mpa-1', update['completedOrderIds'][0])
+        listener.on_history_order_added.assert_called_with('1:ps-mpa-1', update['historyOrders'][0])
+        listener.on_deal_added.assert_called_with('1:ps-mpa-1', update['deals'][0])
+
+    @pytest.mark.asyncio
+    async def test_retry_on_failure(self):
+        """Should retry request on failure."""
+        request_counter = 0
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 1 and data['type'] == 'getOrder' and data['accountId'] == 'accountId' and \
+                    data['orderId'] == '46871284' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+            request_counter += 1
+
+        actual = await client.get_order('accountId', '46871284')
+        order['time'] = date(order['time'])
+        assert actual == order
+
+    @pytest.mark.asyncio
+    async def test_retry_too_many_requests(self):
+        """Should wait specified amount of time on too many requests exception."""
+        request_counter = 0
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0 and data['type'] == 'getOrder' and data['accountId'] == 'accountId' and \
+                    data['orderId'] == '46871284' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+            else:
+                await sio.emit('processingError', {
+                    'id': 1, 'requestId': data['requestId'], 'error': 'TooManyRequestsError',
+                    'message': 'The API allows 10000 requests per 60 minutes ' +
+                    'to avoid overloading our servers.', 'status_code': 429, 'metadata': {
+                        'periodInMinutes': 60, 'maxRequestsForPeriod': 10000,
+                        'recommendedRetryTime': format_date(datetime.now() + timedelta(seconds=1))}})
+            request_counter += 1
+
+        start_time = datetime.now().timestamp()
+        actual = await client.get_order('accountId', '46871284')
+        order['time'] = date(order['time'])
+        assert actual == order
+        assert 0.9 < datetime.now().timestamp() - start_time < 1.1
+
+    @pytest.mark.asyncio
+    async def test_return_too_many_requests_if_long_wait(self):
+        """Should return too many requests exception if recommended time is beyond max request time."""
+        request_counter = 0
+        order = {
+            'id': '46871284',
+            'type': 'ORDER_TYPE_BUY_LIMIT',
+            'state': 'ORDER_STATE_PLACED',
+            'symbol': 'AUDNZD',
+            'magic': 123456,
+            'platform': 'mt5',
+            'time': '2020-04-20T08:38:58.270Z',
+            'openPrice': 1.03,
+            'currentPrice': 1.05206,
+            'volume': 0.01,
+            'currentVolume': 0.01,
+            'comment': 'COMMENT2'
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0 and data['type'] == 'getOrder' and data['accountId'] == 'accountId' and \
+                    data['orderId'] == '46871284' and data['application'] == 'RPC':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'order': order})
+            else:
+                await sio.emit('processingError', {
+                    'id': 1, 'requestId': data['requestId'], 'error': 'TooManyRequestsError',
+                    'message': 'The API allows 10000 requests per 60 minutes ' +
+                    'to avoid overloading our servers.', 'status_code': 429, 'metadata': {
+                        'periodInMinutes': 60, 'maxRequestsForPeriod': 10000,
+                        'recommendedRetryTime': format_date(datetime.now() + timedelta(seconds=60))}})
+            request_counter += 1
+
+        try:
+            await client.get_order('accountId', '46871284')
+            raise Exception('TooManyRequestsException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TooManyRequestsException'
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_not_retry_on_failure(self):
+        """Should not retry request on validation error."""
+        request_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0 and data['type'] == 'subscribeToMarketData' and data['accountId'] == 'accountId' \
+                    and data['symbol'] == 'EURUSD' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1:
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+            else:
+                await sio.emit('processingError', {'id': 1, 'error': 'ValidationError', 'message': 'Validation failed',
+                                                   'details': [{'parameter': 'volume', 'message': 'Required value.'}],
+                                                   'requestId': data['requestId']})
+            request_counter += 1
+            try:
+                await client.subscribe_to_market_data('accountId', 1, 'EURUSD')
+                raise Exception('ValidationException expected')
+            except Exception as err:
+                assert err.__class__.__name__ == 'ValidationException'
+                await client.close()
+            assert request_counter == 1
+
+    @pytest.mark.asyncio
+    async def test_not_retry_trade(self):
+        """Should not retry trade requests on fail."""
+        request_counter = 0
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            nonlocal request_counter
+            if request_counter > 0:
+                pytest.fail()
+            request_counter += 1
+
+        try:
+            await client.trade('accountId', trade)
+            raise Exception('TimeoutException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_not_retry_if_connection_closed_between_retries(self):
+        """Should not retry request if connection closed between retries."""
+        request_counter = 0
+        response = {'type': 'response', 'accountId': 'accountId'}
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'unsubscribe' and data['accountId'] == 'accountId':
+                await sio.emit('response', {'requestId': data['requestId'], **response})
+
+            if data['type'] == 'getOrders' and data['accountId'] == 'accountId' \
+                    and data['application'] == 'RPC':
+                nonlocal request_counter
+                request_counter += 1
+                await sio.emit('processingError',
+                               {'id': 1, 'error': 'NotSynchronizedError', 'message': 'Error message',
+                                'requestId': data['requestId']})
+
+        asyncio.create_task(client.unsubscribe('accountId'))
+        try:
+            await client.get_orders('accountId')
+            raise Exception('NotSynchronizedException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'NotSynchronizedException'
+            await client.close()
+        assert request_counter == 1
+        assert 'accountId' not in client.socket_instances_by_accounts
+
+    @pytest.mark.asyncio
+    async def test_timeout_on_no_response(self):
+        """Should return timeout error if no server response received."""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            pass
+
+        try:
+            await client.trade('accountId', trade)
+            raise Exception('TimeoutException expected')
+        except Exception as err:
+            assert err.__class__.__name__ == 'TimeoutException'
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_subscribe_to_market_data_with_mt_terminal(self):
+        """Should subscribe to market data with MetaTrader terminal."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'subscribeToMarketData' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1 and data['subscriptions'] == [{'type': 'quotes'}]:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.subscribe_to_market_data('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_refresh_market_data_subscriptions(self):
+        """Should refresh market data subscriptions."""
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'refreshMarketDataSubscriptions' and data['accountId'] == 'accountId' and \
+                    data['application'] == 'application' and data['instanceIndex'] == 1 and \
+                    data['subscriptions'] == [{'symbol': 'EURUSD'}]:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.refresh_market_data_subscriptions('accountId', 1, [{'symbol': 'EURUSD'}])
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_from_market_data_with_mt_terminal(self):
+        """Should unsubscribe from market data with MetaTrader terminal."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'unsubscribeFromMarketData' and data['accountId'] == 'accountId' and \
+                    data['symbol'] == 'EURUSD' and data['application'] == 'application' and \
+                    data['instanceIndex'] == 1 and data['subscriptions'] == [{'type': 'quotes'}]:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.unsubscribe_from_market_data('accountId', 1, 'EURUSD', [{'type': 'quotes'}])
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_synchronize_symbol_specifications(self):
+        """Should synchronize symbol specifications."""
+
+        specifications = [{
+            'symbol': 'EURUSD',
+            'tickSize': 0.00001,
+            'minVolume': 0.01,
+            'maxVolume': 200,
+            'volumeStep': 0.01
+        }]
+        listener = MagicMock()
+        listener.on_symbol_specifications_updated = AsyncMock()
+        listener.on_symbol_specification_updated = AsyncMock()
+        listener.on_symbol_specification_removed = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'specifications', 'accountId': 'accountId',
+                                           'specifications': specifications, 'instanceIndex': 1,
+                                           'removedSymbols': ['AUDNZD'], 'host': 'ps-mpa-1'})
+        await future_close
+        listener.on_symbol_specifications_updated.assert_called_with('1:ps-mpa-1', specifications, ['AUDNZD'])
+        listener.on_symbol_specification_updated.assert_called_with('1:ps-mpa-1', specifications[0])
+        listener.on_symbol_specification_removed.assert_called_with('1:ps-mpa-1', 'AUDNZD')
+
+    @pytest.mark.asyncio
+    async def test_synchronize_symbol_prices(self):
+        """Should synchronize symbol prices."""
+
+        prices = [{
+            'symbol': 'AUDNZD',
+            'bid': 1.05916,
+            'ask': 1.05927,
+            'profitTickValue': 0.602,
+            'lossTickValue': 0.60203
+        }]
+        ticks = [{
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'bid': 1.05297,
+            'ask': 1.05309,
+            'last': 0.5298,
+            'volume': 0.13,
+            'side': 'buy'
+        }]
+        candles = [{
+            'symbol': 'AUDNZD',
+            'timeframe': '15m',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'open': 1.03297,
+            'high': 1.06309,
+            'low': 1.02705,
+            'close': 1.043,
+            'tickVolume': 1435,
+            'spread': 17,
+            'volume': 345
+        }]
+        books = [{
+            'symbol': 'AUDNZD',
+            'time': '2020-04-07T03:45:00.000Z',
+            'brokerTime': '2020-04-07 06:45:00.000',
+            'book': [
+                {
+                    'type': 'BOOK_TYPE_SELL',
+                    'price': 1.05309,
+                    'volume': 5.67
+                },
+                {
+                    'type': 'BOOK_TYPE_BUY',
+                    'price': 1.05297,
+                    'volume': 3.45
+                }
+            ]
+        }]
+        listener = MagicMock()
+        listener.on_symbol_prices_updated = AsyncMock()
+        listener.on_candles_updated = AsyncMock()
+        listener.on_ticks_updated = AsyncMock()
+        listener.on_books_updated = AsyncMock()
+        listener.on_symbol_price_updated = FinalMock()
+        client.add_synchronization_listener('accountId', listener)
+        await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices,
+                                           'ticks': ticks, 'candles': candles, 'books': books,
+                                           'equity': 100, 'margin': 200, 'freeMargin': 400, 'marginLevel': 40000,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1'})
+        await future_close
+        ticks[0]['time'] = date(ticks[0]['time'])
+        candles[0]['time'] = date(candles[0]['time'])
+        books[0]['time'] = date(books[0]['time'])
+        listener.on_symbol_prices_updated.assert_called_with('1:ps-mpa-1', prices, 100, 200, 400, 40000, None)
+        listener.on_candles_updated.assert_called_with('1:ps-mpa-1', candles, 100, 200, 400, 40000, None)
+        listener.on_ticks_updated.assert_called_with('1:ps-mpa-1', ticks, 100, 200, 400, 40000, None)
+        listener.on_books_updated.assert_called_with('1:ps-mpa-1', books, 100, 200, 400, 40000, None)
+        listener.on_symbol_price_updated.assert_called_with('1:ps-mpa-1', prices[0])
+
+    @pytest.mark.asyncio
+    async def test_wait_for_server_side_sync(self):
+        """Should wait for server-side terminal state synchronization."""
+
+        request_received = False
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'waitSynchronized' and data['accountId'] == 'accountId' and \
+                    data['applicationPattern'] == 'app.*' and data['timeoutInSeconds'] == 10 \
+                    and data['application'] == 'application' and data['instanceIndex'] == 1:
+                nonlocal request_received
+                request_received = True
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId']})
+
+        await client.wait_synchronized('accountId', 1, 'app.*', 10)
+        assert request_received
+
+    @pytest.mark.asyncio
+    async def test_invoke_latency_listener(self):
+        """Should invoke latency listener on response."""
+
+        account_id = None
+        request_type = None
+        actual_timestamps = None
+
+        async def on_response(aid, type, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal request_type
+            request_type = type
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+
+        listener = MagicMock()
+        listener.on_response = on_response
+        client.add_latency_listener(listener)
+        price = {}
+        timestamps = None
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'getSymbolPrice' and data['accountId'] == 'accountId' and data['symbol'] == 'AUDNZD' \
+                    and data['application'] == 'RPC' and 'clientProcessingStarted' in data['timestamps']:
+                nonlocal timestamps
+                timestamps = deepcopy(data['timestamps'])
+                timestamps['serverProcessingStarted'] = format_date(datetime.now())
+                timestamps['serverProcessingFinished'] = format_date(datetime.now())
+                timestamps['clientProcessingStarted'] = format_date(date(timestamps['clientProcessingStarted']))
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'price': price, 'timestamps': timestamps})
+
+        await client.get_symbol_price('accountId', 'AUDNZD')
+        await asyncio.sleep(0.05)
+        assert account_id == 'accountId'
+        assert request_type == 'getSymbolPrice'
+        assert actual_timestamps['clientProcessingStarted'] == date(timestamps['clientProcessingStarted'])
+        assert actual_timestamps['serverProcessingStarted'] == date(timestamps['serverProcessingStarted'])
+        assert actual_timestamps['serverProcessingFinished'] == date(timestamps['serverProcessingFinished'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_measure_price_latencies(self):
+        """Should measure price streaming latencies."""
+        prices = [{
+            'symbol': 'AUDNZD',
+            'timestamps': {
+                'eventGenerated': format_date(datetime.now()),
+                'serverProcessingStarted': format_date(datetime.now()),
+                'serverProcessingFinished': format_date(datetime.now())
+            }
+        }]
+        account_id = None
+        symbol = None
+        actual_timestamps = None
+        listener = MagicMock()
+
+        async def on_symbol_price(aid, sym, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal symbol
+            symbol = sym
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+            await close_client()
+
+        listener.on_symbol_price = on_symbol_price
+        client.add_latency_listener(listener)
+        await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId', 'prices': prices,
+                                           'equity': 100, 'margin': 200, 'freeMargin': 400, 'marginLevel': 40000})
+        await future_close
+        assert account_id == 'accountId'
+        assert symbol == 'AUDNZD'
+        assert actual_timestamps['serverProcessingFinished'] == \
+            date(prices[0]['timestamps']['serverProcessingFinished'])
+        assert actual_timestamps['serverProcessingStarted'] == \
+               date(prices[0]['timestamps']['serverProcessingStarted'])
+        assert actual_timestamps['eventGenerated'] == \
+               date(prices[0]['timestamps']['eventGenerated'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_measure_update_latencies(self):
+        """Should measure update latencies."""
+        update = {
+            'timestamps': {
+                'eventGenerated': format_date(datetime.now()),
+                'serverProcessingStarted': format_date(datetime.now()),
+                'serverProcessingFinished': format_date(datetime.now())
+            }
+        }
+        account_id = None
+        actual_timestamps = None
+        listener = MagicMock()
+
+        async def on_update(aid, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+            await close_client()
+
+        listener.on_update = on_update
+        client.add_latency_listener(listener)
+        await sio.emit('synchronization', {'type': 'update', 'accountId': 'accountId', **update})
+        await future_close
+        assert account_id == 'accountId'
+        assert actual_timestamps['serverProcessingFinished'] == \
+               date(update['timestamps']['serverProcessingFinished'])
+        assert actual_timestamps['serverProcessingStarted'] == \
+               date(update['timestamps']['serverProcessingStarted'])
+        assert actual_timestamps['eventGenerated'] == \
+               date(update['timestamps']['eventGenerated'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_process_trade_latency(self):
+        """Should process trade latency."""
+        trade = {}
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+        timestamps = {
+            'clientExecutionStarted': format_date(datetime.now()),
+            'serverExecutionStarted': format_date(datetime.now()),
+            'serverExecutionFinished': format_date(datetime.now()),
+            'tradeExecuted': format_date(datetime.now())
+        }
+        account_id = None
+        actual_timestamps = None
+        listener = MagicMock()
+
+        async def on_trade(aid, ts):
+            nonlocal account_id
+            account_id = aid
+            nonlocal actual_timestamps
+            actual_timestamps = ts
+
+        listener.on_trade = on_trade
+        client.add_latency_listener(listener)
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            assert data['trade'] == trade
+            if data['type'] == 'trade' and data['accountId'] == 'accountId' and data['application'] == 'application':
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response,
+                                            'timestamps': timestamps})
+
+        await client.trade('accountId', trade)
+        assert account_id == 'accountId'
+        assert actual_timestamps['clientExecutionStarted'] == \
+               date(timestamps['clientExecutionStarted'])
+        assert actual_timestamps['serverExecutionStarted'] == \
+               date(timestamps['serverExecutionStarted'])
+        assert actual_timestamps['serverExecutionFinished'] == \
+               date(timestamps['serverExecutionFinished'])
+        assert actual_timestamps['tradeExecuted'] == \
+               date(timestamps['tradeExecuted'])
+        assert 'clientProcessingFinished' in actual_timestamps
+
+    @pytest.mark.asyncio
+    async def test_reconnect(self):
+        """Should reconnect to server on disconnect."""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+        listener = MagicMock()
+        listener.on_reconnected = AsyncMock()
+        client.add_reconnect_listener(listener, 'accountId')
+        client._packetOrderer.on_reconnected = MagicMock()
+        client._subscriptionManager.on_reconnected = MagicMock()
+        request_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'trade':
+                nonlocal request_counter
+                request_counter += 1
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response})
+            await sio.disconnect(sid)
+
+        await client.trade('accountId', trade)
+        await asyncio.sleep(0.1)
+        listener.on_reconnected.assert_called_once()
+        client._subscriptionManager.on_reconnected.assert_called_with(0, ['accountId'])
+        client._packetOrderer.on_reconnected.assert_called_with(['accountId'])
+        await client.trade('accountId', trade)
+        assert request_counter == 2
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_remove_reconnect_listener(self):
+        """Should remove reconnect listener"""
+
+        trade = {
+            'actionType': 'ORDER_TYPE_SELL',
+            'symbol': 'AUDNZD',
+            'volume': 0.07
+        }
+        response = {
+            'numericCode': 10009,
+            'stringCode': 'TRADE_RETCODE_DONE',
+            'message': 'Request completed',
+            'orderId': '46870472'
+        }
+        listener = MagicMock()
+        listener.on_reconnected = AsyncMock()
+        client.add_reconnect_listener(listener, 'accountId')
+        client._subscriptionManager.on_reconnected = MagicMock()
+        request_counter = 0
+
+        @sio.on('request')
+        async def on_request(sid, data):
+            if data['type'] == 'trade':
+                nonlocal request_counter
+                request_counter += 1
+                await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                            'requestId': data['requestId'], 'response': response})
+            await sio.disconnect(sid)
+
+        await client.trade('accountId', trade)
+        await asyncio.sleep(0.1)
+        listener.on_reconnected.assert_called_once()
+        client.remove_reconnect_listener(listener)
+        await client.trade('accountId', trade)
+        await asyncio.sleep(0.1)
+        listener.on_reconnected.assert_called_once()
+        assert request_counter == 2
+
+    @pytest.mark.asyncio
+    async def test_process_packet_in_order(self):
+        with patch('lib.clients.metaApi.metaApiWebsocket_client.asyncio.sleep', new=lambda x: sleep(x / 60)):
+            orders_call_time = 0
+            positions_call_time = 0
+            disconnected_call_time = 0
+            prices_call_time = 0
+
+            async def on_disconnected(instance_index: str):
+                await sleep(0.15)
+                nonlocal disconnected_call_time
+                disconnected_call_time = datetime.now().timestamp()
+
+            async def on_pending_orders_replaced(instance_index: str, orders):
+                await sleep(0.25)
+                nonlocal orders_call_time
+                orders_call_time = datetime.now().timestamp()
+
+            async def on_positions_replaced(instance_index: str, positions):
+                await sleep(0.05)
+                nonlocal positions_call_time
+                positions_call_time = datetime.now().timestamp()
+
+            async def on_symbol_prices_updated(instance_index: str, prices, equity: float = None, margin: float = None,
+                                               free_margin: float = None, margin_level: float = None,
+                                               account_currency_exchange_rate: float = None):
+                await sleep(0.05)
+                nonlocal prices_call_time
+                prices_call_time = datetime.now().timestamp()
+
+            listener = MagicMock()
+            listener.on_connected = AsyncMock()
+            listener.on_disconnected = on_disconnected
+            listener.on_pending_orders_replaced = on_pending_orders_replaced
+            listener.on_pending_orders_synchronized = AsyncMock()
+            listener.on_positions_replaced = on_positions_replaced
+            listener.on_positions_synchronized = AsyncMock()
+            listener.on_symbol_prices_updated = on_symbol_prices_updated
+            client.add_synchronization_listener('accountId', listener)
+
+            @sio.on('request')
+            async def on_request(sid, data):
+                if data['type'] == 'getPositions' and data['accountId'] == 'accountId' \
+                        and data['application'] == 'RPC':
+                    await sio.emit('response', {'type': 'response', 'accountId': data['accountId'],
+                                                'requestId': data['requestId'], 'positions': []})
+                else:
+                    raise Exception('Wrong request')
+
+            await client.get_positions('accountId')
+            client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+            client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['synchronizationId']
+            await sio.emit('synchronization', {'type': 'authenticated', 'accountId': 'accountId', 'host': 'ps-mpa-1',
+                                               'instanceIndex': 1, 'replicas': 2,
+                                               'synchronizationId': 'synchronizationId', 'sequenceNumber': 1})
+            await sleep(0.95)
+
+            await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': [],
+                                               'instanceIndex': 1, 'host': 'ps-mpa-1',
+                                               'synchronizationId': 'synchronizationId', 'sequenceNumber': 2})
+            await sio.emit('synchronization', {'type': 'prices', 'accountId': 'accountId',
+                                               'prices': [{'symbol': 'EURUSD'}], 'instanceIndex': 1,
+                                               'host': 'ps-mpa-1', 'synchronizationId': 'synchronizationId'})
+            await sleep(0.1)
+            await sio.emit('synchronization', {'type': 'positions', 'accountId': 'accountId', 'positions': [],
+                                               'instanceIndex': 1, 'host': 'ps-mpa-1',
+                                               'synchronizationId': 'synchronizationId', 'sequenceNumber': 3})
+            await sleep(0.5)
+            assert prices_call_time != 0
+            assert prices_call_time < orders_call_time < disconnected_call_time < positions_call_time
+
+    @pytest.mark.asyncio
+    async def test_not_process_old_sync_packet_without_gaps_in_sn(self):
+        """Should not process old synchronization packet without gaps in sequence numbers."""
+        listener = MagicMock()
+        listener.on_synchronization_started = AsyncMock()
+        listener.on_pending_orders_replaced = AsyncMock()
+        client.add_synchronization_listener('accountId', listener)
+        client._socketInstances[0]['synchronizationThrottler'] = MagicMock()
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['ABC']
+
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'sequenceNumber': 1, 'sequenceTimestamp': 1603124267178,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1', 'synchronizationId': 'ABC'})
+        await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': [],
+                                           'sequenceNumber': 2, 'sequenceTimestamp': 1603124267181,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1', 'synchronizationId': 'ABC'})
+        await asyncio.sleep(0.05)
+        assert listener.on_synchronization_started.call_count == 1
+        assert listener.on_pending_orders_replaced.call_count == 1
+
+        client._socketInstances[0]['synchronizationThrottler'].active_synchronization_ids = ['DEF']
+        await sio.emit('synchronization', {'type': 'synchronizationStarted', 'accountId': 'accountId',
+                                           'sequenceNumber': 3, 'sequenceTimestamp': 1603124267190,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1', 'synchronizationId': 'DEF'})
+        await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': [],
+                                           'sequenceNumber': 4, 'sequenceTimestamp': 1603124267192,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1', 'synchronizationId': 'ABC'})
+        await sio.emit('synchronization', {'type': 'orders', 'accountId': 'accountId', 'orders': [],
+                                           'sequenceNumber': 5, 'sequenceTimestamp': 1603124267195,
+                                           'instanceIndex': 1, 'host': 'ps-mpa-1', 'synchronizationId': 'DEF'})
+        await asyncio.sleep(0.05)
+        assert listener.on_synchronization_started.call_count == 2
+        assert listener.on_pending_orders_replaced.call_count == 2
