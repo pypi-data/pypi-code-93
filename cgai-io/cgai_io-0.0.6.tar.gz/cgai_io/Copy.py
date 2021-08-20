@@ -1,0 +1,63 @@
+# -*- coding:utf-8 -*-
+from ._util import *
+
+
+
+def copyfile(src_file,des_file):
+    """
+    复制文件
+    :param src_file: 源文件路径 
+    :param des_file: 复制文件路径
+    :return: 
+    """
+    if isfile(src_file):
+        if iswin():
+            src_file = src_file.replace('/', '\\')
+            des_file = des_file.replace('/', '\\')
+            os.system('copy "%s" "%s"' % (src_file, des_file))
+        else:
+            os.system('cp "%s" "%s"' % (src_file, des_file))
+    else:
+        print('复制对象非文件类型')
+
+def copydir(src_dir,des_dir):
+    """
+    复制文件夹
+    :param src_dir: 源目录路径
+    :param des_dir:  复制文件夹路径
+    :return:
+    """
+    if isdir(src_dir):
+        if iswin():
+            src_dir = src_dir.replace('/', '\\')
+            des_dir = des_dir.replace('/', '\\')
+            os.system('xcopy "%s" "%s" /s /e /v /y /i' % (src_dir, des_dir))
+        else:
+            os.system('cp -r "%s" "%s"' % (src_dir, des_dir))
+    else:
+        print('复制对象非目录类型')
+
+
+
+def copyall(src,des):
+    """
+    复制文件或文件夹
+    :param src:
+    :param des:
+    :return:
+    """
+    src = src.replace('/', '\\')
+    des = des.replace('/', '\\')
+
+    if isfile(src):
+
+        if iswin():
+            os.system('copy "%s" "%s"' % (src, des))
+        else:
+            os.system('cp "%s" "%s"' % (src, des))
+
+    if isdir(src):
+        if iswin():
+            os.system('xcopy "%s" "%s" /s /e /v /y /i' % (src, des))
+        else:
+            os.system('cp -r "%s" "%s"' % (src, des))
