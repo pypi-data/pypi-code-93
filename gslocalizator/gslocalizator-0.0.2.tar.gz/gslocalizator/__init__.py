@@ -1,0 +1,3 @@
+from gslocalizator.localizator import GoogleSheetLocalizator
+
+GoogleSheetLocalizator = GoogleSheetLocalizator
