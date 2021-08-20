@@ -1,0 +1,1 @@
+from .noCheck import Number
