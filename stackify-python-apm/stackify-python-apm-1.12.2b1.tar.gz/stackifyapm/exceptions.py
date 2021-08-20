@@ -1,0 +1,2 @@
+class StackifyAPMException(Exception):
+    pass
