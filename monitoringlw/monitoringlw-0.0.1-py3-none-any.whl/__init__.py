@@ -1,0 +1,1 @@
+from monitoring import insert_to_monitoring
