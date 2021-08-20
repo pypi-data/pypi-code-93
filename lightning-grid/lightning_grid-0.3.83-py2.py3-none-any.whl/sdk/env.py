@@ -1,0 +1,8 @@
+import os
+
+GRID_URL = os.getenv("GRID_URL", 'https://platform.grid.ai')
+
+TERMINAL_STATES = {"CANCELLED", "FAILED", "SUCCEEDED"}
+STARTED_STATES = {"RUNNING", *TERMINAL_STATES}
+WAITING_STATES = {"PENDING"}
+IGNORE_WARNINGS = None
