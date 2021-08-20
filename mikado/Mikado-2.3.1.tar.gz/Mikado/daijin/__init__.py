@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+
+"""
+The Daijin module is built to manage multiple alignments and assemblies of
+RNA-Seq data, and subsequently merge them with Mikado.
+"""
+
+
+import sys
+import os
+import argparse
+import datetime
+import time
+from snakemake.utils import min_version
+from ..configuration.daijin_configurator import create_daijin_config
+import pkg_resources
+try:
+    from yaml import CSafeLoader as yLoader
+except ImportError:
+    from yaml import SafeLoader as yLoader
+
+system_hpc_yaml = pkg_resources.resource_filename("Mikado", os.path.join("daijin", "hpc.yaml"))
+
+min_version("3.6")
+
+TIME_START = time.time()
+NOW = datetime.datetime.fromtimestamp(TIME_START).strftime('%Y-%m-%d_%H:%M:%S')
+
+DAIJIN_DIR = pkg_resources.resource_filename("Mikado", "daijin")
+assert pkg_resources.resource_exists("Mikado", "daijin")
+
+
+# noinspection PyPep8Naming
+def get_sub_commands(SCHEDULER, prefix, additional):
+    res_cmd = ""
+    sub_cmd = ""
+
+    if SCHEDULER == "LSF":
+        sub_cmd = "bsub"
+        res_cmd = " ".join([" -R rusage[mem={{cluster.memory}}]span[ptile={{threads}}] -n {{threads}}",
+                            "-q {{cluster.queue}} -oo /dev/null",
+                            "-J {prefix}_{rule} -oo daijin_logs/{prefix}_{{rule}}_%j.out"]).format(
+            prefix=prefix)
+    elif SCHEDULER == "PBS":
+        sub_cmd = "qsub"
+        res_cmd = " -lselect=1:mem={cluster.memory}MB:ncpus={threads} -q {cluster.queue}"
+    elif SCHEDULER == "SLURM":
+        sub_cmd = "sbatch"
+        res_cmd = " ".join([" -N 1 -n 1 -c {{threads}} -p {{cluster.queue}} --mem={{cluster.memory}}",
+                            "-J {prefix}_{{rule}} -o daijin_logs/{prefix}_{{rule}}_%j.out -e daijin_logs/{prefix}_{{rule}}_%j.err"]).format(prefix=prefix)
+
+    res_cmd = "{} {}".format(res_cmd, additional)
+    return res_cmd, sub_cmd
+
+
+def create_parser():
+
+    """
+    Function to create the command-line parser for Daijin.
+    :return:
+    """
+
+    parser = argparse.ArgumentParser("""Execute pipeline""")
+    # parser.add_argument("config",
+    #                     help="Configuration file to use for running daijin.")
+    parser.add_argument("-c", "--hpc_conf",
+                        default="daijin_hpc.yaml",
+                        help="""Configuration file that allows the user to override resource requests for each rule \
+when running under a scheduler in a HPC environment.""")
+    parser.add_argument("--latency-wait", default=None, type=int, dest="latency_wait",
+                        help="Latency wait for Daijin. Default: 1s if local, 60s for scheduler jobs.")
+    parser.add_argument("-d", "--dryrun", action="store_true", default=False,
+                        help="Do a dry run for testing.")
+    parser.add_argument("--jobs", "-J", action="store", metavar="N", type=int, default="10",
+                        help="Maximum number of cluster jobs to execute concurrently.")
+    parser.add_argument("--cores", "-C", action="store", nargs="?", metavar="N", type=int, default="1000",
+                        help="Use at most N cores in parallel (default: 1000).")
+    parser.add_argument("--threads", "-t", action="store", metavar="N", type=int, default=None,
+                        help="""Maximum number of threads per job. \
+Default: None (set in the configuration file)""")
+    parser.add_argument("--exe", default="daijin_exe.yaml",
+                        help="""Configuration file containing the information on the software versions to be used. \
+Default: None, Daijin presumes that all needed programs are already present in the environment.""")
+    parser.add_argument("--no_drmaa", "-nd", action='store_true', default=False,
+                        help="Use this flag if you wish to run without DRMAA, for example, \
+if running on a HPC and DRMAA is not available, or if running locally on your own machine or server.")
+    parser.add_argument("-ad", "--additional-drmaa", default="", type=str,
+                        dest="additional_drmaa", help="Additional parameters to be added to the DRMAA command.")
+    parser.add_argument("--rerun-incomplete", "--ri", action='store_true', default=False,
+                        dest="rerun_incomplete",
+                        help="Re-run all jobs the output of which is recognized as incomplete.")
+    parser.add_argument("--use-conda", action="store_true", default=False, dest="use_conda")
+    parser.add_argument("--forcerun", "-R", nargs="+", metavar="TARGET",
+                        help="Force the re-execution or creation of the given rules or files. \
+                        Use this option if you changed a rule and want to have all its output in your \
+                        workflow updated.")
+    parser.add_argument("--cleanup-metadata", dest="cleanup_metadata",
+                        nargs="+",
+                        default=[],
+                        help="List of files that are complete even if Daijin has lost track of them because eg. they were generated by external processes.")
+    parser.add_argument("--prefix", default="daijin",
+                        help="Optional prefix to prepend to job names while using DRMAA.")
+    parser.add_argument("--detailed-summary", "-D", action='store_true', default=False,
+                        dest="detailed_summary",
+                        help="Print detailed summary of all input and output files")
+    parser.add_argument("--list", "-l", action='store_true', default=False,
+                        help="List resources used in the workflow")
+    parser.add_argument("--dag", action='store_true', default=False,
+                        help="Do not execute anything and print the redirected acylic graph \
+                        of jobs in the dot language.")
+    parser.add_argument("--nolock", action="store_true", default=False,
+                        help="Do not lock the working directory. Use with caution!")
+    return parser
+
+
+def create_config_parser():
+
+    """
+    Function to create the configuration file for Daijin.
+    :return:
+    """
+
+    parser = argparse.ArgumentParser("""Configure the pipeline""")
+    runtime = parser.add_argument_group(""""Options related to how to run Daijin - threads, cluster configuration, etc.
+Please note that the development of the assembly pipeline has now been DISCONTINUED. We will continue to provide support
+for the "mikado" part of daijin.""")
+    runtime.add_argument("-c", "--cluster_config",
+                        type=str, default=None,
+                        help="Cluster configuration file to write to.")
+    parser.add_argument("--full", action="store_true", default=False)
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Random seed number.")
+    output_format = parser.add_mutually_exclusive_group()
+    output_format.add_argument("-j", "--json", action="store_true", default=False,
+                               help="Output will be in JSON (default: inferred by filename, with TOML as fallback).")
+    output_format.add_argument("-y", "--yaml", action="store_true", default=False,
+                               help="Output will be in YAML (default: inferred by filename, with TOML as fallback).")
+    output_format.add_argument("--toml", action="store_true", default=False,
+                               help="Output will be in TOML (default: inferred by filename, with TOML as fallback).")
+    runtime.add_argument("--threads", "-t", action="store", metavar="N", type=int, default=4,
+                        help="""Maximum number of threads per job. Default: %(default)s""")
+    runtime.add_argument("-od", "--out-dir", dest="out_dir", default=None, required=False,
+                        help="Output directory. Default if unspecified: chosen name.")
+    runtime.add_argument("-o", "--out", default=sys.stdout, type=argparse.FileType("w"),
+                        help="Output file. If not specified, it will be printed to STDOUT.\
+Daijin will try to infer the type of configuration (TOML, YAML, JSON) from the output file name, with TOML as the\
+default. If one of --json, --yaml, --toml flags is specified, it will override the filename inference.")
+    runtime.add_argument("--scheduler", default="", choices=["local", "SLURM", "LSF", "PBS"],
+                        help="Scheduler to use. Default: None - ie, either execute everything on the local machine or use DRMAA to submit and control jobs (recommended).")
+    runtime.add_argument("--exe", default="daijin_exe.yaml",
+                         help="Configuration file for the executables.")
+    runtime.add_argument("-q", "--queue",
+                         default=None,
+                         help="Name of queue to be used in the HPC. Required if a scheduler has been selected.")
+    reference = parser.add_argument_group("Arguments related to the reference species.")
+    reference.add_argument("--name", default="Daijin", help="Name of the species under analysis.")
+    reference.add_argument("--genome", "-g", required=True,
+                           help="Reference genome for the analysis, in FASTA format. Required.")
+    reference.add_argument("--transcriptome", help="Reference annotation, in GFF3 or GTF format.",
+                           default="")
+    paired_reads = parser.add_argument_group("Arguments related to the input paired reads.")
+    paired_input = paired_reads.add_mutually_exclusive_group()
+    paired_input.add_argument("--sample-sheet", dest="sample_sheet", default=None,
+                              help="""Sample sheet containing the details of the input reads, separated by tabs, in the form:
+                              - Read1
+                              - Read2 (optional)
+                              - Sample name
+                              - Strandedness
+                              - Boolean flag, True if it is a long read sample, False otherwise. Optional, default if "False".""")
+    paired_input.add_argument("-r1", "--left_reads", dest="r1",
+                        nargs="+",
+                        default=[], required=False,
+                        help="Left reads for the analysis. Required.")
+    paired_reads.add_argument("-r2", "--right_reads", dest="r2",
+                        nargs="+",
+                        default=[], required=False,
+                        help="Right reads for the analysis. Required.")
+    paired_reads.add_argument("-s", "--samples",
+                        nargs="+",
+                        default=[], required=False,
+                        help="Sample names for the analysis. Required.")
+    paired_reads.add_argument(
+        "-st", "--strandedness", nargs="+",
+        default=[], required=False, choices=["fr-unstranded", "fr-secondstrand", "fr-firststrand", "f", "r"],
+        help="Strandedness of the reads. Specify it 0, 1, or number of samples times. Choices: %(choices)s.")
+    parser.add_argument("-al", "--aligners", choices=["gsnap", "star", "hisat", "tophat"], required=False,
+                        default=[], nargs="*", help="Aligner(s) to use for the analysis. Choices: %(choices)s")
+    parser.add_argument("-lal", "--long-read-aligners", dest="long_aln_methods", choices=["star", "gmap"],
+                        required=False, default=[], nargs="*",
+                        help="Aligner(s) to use for long reads. Choices: %(choices)s")
+    parser.add_argument("-as", "--assemblers", dest="asm_methods", required=False,
+                        choices=["class2", "cufflinks", "stringtie", "trinity", "scallop"],
+                        default=[], nargs="*", help="Assembler(s) to use for the analysis. Choices: %(choices)s")
+    mikado = parser.add_argument_group("Options related to the Mikado phase of the pipeline.")
+    # scoring = parser.add_argument_group("Options related to the scoring system")
+    scoring_file = mikado.add_mutually_exclusive_group(required=True)
+    scoring_file.add_argument("--scoring", type=str, default=None,
+                         help="""Available scoring files. Either provide your own of choose from
+                         one of the pre-packaged scoring files:
+                             {}""".format("\n".join(["- {}".format(_) for _ in pkg_resources.resource_listdir(
+                             "Mikado", os.path.join("configuration", "scoring_files"))]
+                                                )))
+    scoring_file.add_argument("--custom-scoring", type=str, default=None,
+                              help="""Pre-created scoring file. If the file does not exist,
+                              the skeleton of a scoring file will be written out at the provided location.""")
+    mikado.add_argument("--copy-scoring", default=False,
+                         type=str, dest="copy_scoring",
+                         help="File into which to copy the selected scoring file, for modification.")
+    mikado.add_argument("-m", "--modes", default=["stringent"], nargs="+",
+                        choices=["nosplit", "split", "permissive", "stringent", "lenient"],
+                        required=False,
+                        help="Mikado pick modes to run. Choices: %(choices)s")
+    mikado.add_argument("-i", "--intron-range",
+                        dest="intron_range", type=int, nargs=2,
+                        default=None,
+                        help="""Range into which intron lengths should fall, as a couple of integers.
+                                Transcripts with intron lengths outside of this range will be penalised.
+                                Default: (60, 900)""")
+    mikado.add_argument("--flank", default=None, type=int,
+                        required=False,
+                        help="Amount of flanking for grouping transcripts in superloci during the pick phase of Mikado.")
+    mikado.add_argument("--prot-db", dest="prot_db", default=[], nargs="+",
+                        help="Protein database to compare against, for Mikado.")
+    mikado.add_argument("--use-blast", dest="use_blast", action="store_true",
+                        default=False, help="Flag. If set, Daijin will use BLAST instead of DIAMOND.")
+    mikado.add_argument("--use-transdecoder", dest="use_transdecoder", action="store_true",
+                        default=False, help="Flag. If set, Daijin will use TransDecoder instead of Prodigal.")
+    mikado.add_argument("--no-files", action="store_true", default=False,
+                        help="Flag. If set, remove all file fields.")
+    parser.set_defaults(func=create_daijin_config)
+    return parser
