@@ -1,0 +1,42 @@
+# Mode bits from RFC 2783
+
+# Device/implementation parameters
+PPS_CAPTUREASSERT = 0x01
+PPS_CAPTURECLEAR = 0x02
+PPS_CAPTUREBOTH = 0x03
+
+PPS_OFFSETASSERT = 0x10
+PPS_OFFSETCLEAR = 0x20
+
+PPS_CANWAIT = 0x100
+PPS_CANPOLL = 0x200
+
+# Kernel actions
+PPS_ECHOASSERT = 0x40
+PPS_ECHOCLEAR = 0x80
+
+# Timestamp formats
+PPS_TSFMT_TSPEC = 0x1000
+PPS_TSFMT_NTPFP = 0x2000
+
+# Helper for printing out mode information
+MODE_BITS = (
+    (PPS_CAPTUREASSERT, "PPS_CAPTUREASSERT"),
+    (PPS_CAPTURECLEAR, "PPS_CAPTURECLEAR"),
+
+    (PPS_OFFSETASSERT, "PPS_OFFSETASSERT"),
+    (PPS_OFFSETCLEAR, "PPS_OFFSETCLEAR"),
+
+    (PPS_ECHOASSERT, "PPS_ECHOASSERT"),
+    (PPS_ECHOCLEAR, "PPS_ECHOCLEAR"),
+
+    (PPS_CANWAIT, "PPS_CANWAIT"),
+    (PPS_CANPOLL, "PPS_CANPOLL"),
+
+    (PPS_TSFMT_TSPEC, "PPS_TSFMT_TSPEC"),
+    (PPS_TSFMT_NTPFP, "PPS_TSFMT_NTPFP"),
+)
+
+
+def ioc(direction, group, count, size=0):
+    return direction | (size << 16) | (ord(group) << 8) | count
