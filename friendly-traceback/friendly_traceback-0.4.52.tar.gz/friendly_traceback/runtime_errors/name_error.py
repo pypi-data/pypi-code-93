@@ -1,0 +1,266 @@
+import ast
+import re
+from types import FrameType
+from typing import Optional, Tuple
+
+from .. import debug_helper, info_variables, token_utils, utils
+from ..core import TracebackData
+from ..ft_gettext import current_lang
+from ..typing import CauseInfo, SimilarNamesInfo
+from . import stdlib_modules
+
+
+def using_python() -> str:  # pragma: no cover
+    _ = current_lang.translate
+    return _("You are already using Python!")
+
+
+# The following is also intended to be used in custom environments;
+# we currently use it in Mu.  It is meant to recognize names that
+# are intended as a single word command, or call to a function
+# that does is not available in a given environment.
+CUSTOM_NAMES = {"python": using_python, "python3": using_python}
+
+parser = utils.RuntimeMessageParser()
+
+
+@parser.add
+def free_variable_referenced(
+    message: str, _frame: FrameType, _tb_data: TracebackData
+) -> CauseInfo:
+    _ = current_lang.translate
+    pattern = re.compile(
+        r"free variable '(.*)' referenced before assignment in enclosing scope"
+    )
+    match = re.search(pattern, message)
+    if not match:
+        return {}
+
+    unknown_name = match.group(1)
+    cause = _(
+        "In your program, `{var_name}` is an unknown name\n"
+        "that exists in an enclosing scope,\n"
+        "but has not yet been assigned a value.\n"
+    ).format(var_name=unknown_name)
+    return {"cause": cause}
+
+
+@parser.add
+def name_not_defined(
+    message: str, frame: FrameType, tb_data: TracebackData
+) -> CauseInfo:
+    _ = current_lang.translate
+    pattern = re.compile(r"name '(.*)' is not defined")
+    match = re.search(pattern, message)
+    if not match:
+        return {}
+
+    unknown_name = match.group(1)
+    cause = _("In your program, no object with the name `{var_name}` exists.\n").format(
+        var_name=unknown_name
+    )
+
+    if unknown_name == "ꓺ":  # pragma: no cover
+        return flipfloperator()
+
+    known = is_stdlib_module(unknown_name, tb_data)
+    if known:
+        return known
+
+    if unknown_name in CUSTOM_NAMES:
+        bad_line = tb_data.bad_line.replace("(", "").replace(")", "").strip()
+        if bad_line == unknown_name:
+            cause = CUSTOM_NAMES[unknown_name]()
+            return {"cause": cause, "suggest": cause}
+
+    if unknown_name in ["i", "j"]:
+        hint = _("Did you mean `1j`?\n")
+        cause += _(
+            "However, sometimes `{name}` is intended to represent\n"
+            "the square root of `-1` which is written as `1j` in Python.\n"
+        ).format(name=unknown_name)
+        return {"cause": cause, "suggest": hint}
+
+    type_hint = info_variables.name_has_type_hint(unknown_name, frame)
+    similar = info_variables.get_similar_names(unknown_name, frame)
+    if similar["best"] is not None:
+        hint = _("Did you mean `{name}`?\n").format(name=similar["best"])
+    elif type_hint:
+        hint = _("Did you use a colon instead of an equal sign?\n")
+    else:
+        hint = None
+
+    additional = type_hint + format_similar_names(unknown_name, similar)
+    try:
+        more, hint = missing_self(unknown_name, frame, tb_data, hint)
+        if more:
+            additional += "\n" + more
+    except Exception as e:  # pragma: no cover
+        debug_helper.log("Problem in name_not_defined()")
+        debug_helper.log_error(e)
+    if not additional:
+        additional = _("I have no additional information for you.\n")
+
+    cause = {"cause": cause + additional}
+    if hint is None:
+        return cause
+    cause["suggest"] = hint
+    return cause
+
+
+def flipfloperator() -> CauseInfo:  # pragma: no cover
+    _ = current_lang.translate
+    hint = _("You must be a fan of PyConAu!\n")
+    cause = _(
+        "I am guessing that you tried to use (one of) the flipfloperators\n"
+        "shown during the second Lightning Talk session of PyConAu 2018,\n"
+        "but that you forgot to install the module from PyPI.\n\n"
+        "#### Note that it is still a bad idea.\n"
+    )
+    return {"cause": cause, "suggest": hint}
+
+
+def is_stdlib_module(name: str, tb_data: "TracebackData") -> CauseInfo:
+    """Determine if an unknown name is to be found in the Python standard library.
+    We're looking for something like name.attribute"""
+    _ = current_lang.translate
+    if tb_data.node and not isinstance(tb_data.node.parent, ast.Attribute):
+        return {}
+
+    # Some Python 2 libraries used names with uppercase letters.
+    lowercase = name.lower()
+    if name in stdlib_modules.names or lowercase in stdlib_modules.names:
+        hint = _("Did you forget to import `{name}`?\n").format(name=lowercase)
+        cause = _(
+            "The name `{name}` is not defined in your program.\n"
+            "Perhaps you forgot to import `{lowercase}` which is found\n"
+            "in Python's standard library.\n"
+        ).format(name=name, lowercase=lowercase)
+        if name != lowercase:
+            cause += _(
+                "Note that the name of the module is `{lowercase}` and not `{name}`.\n"
+            ).format(lowercase=lowercase, name=name)
+        return {"cause": cause, "suggest": hint}
+    return {}
+
+
+def format_similar_names(name: str, similar: SimilarNamesInfo) -> str:
+    """This function formats the names that were found to be similar"""
+    _ = current_lang.translate
+
+    nb_similar_names = (
+        len(similar["locals"]) + len(similar["globals"]) + len(similar["builtins"])
+    )
+    if nb_similar_names == 0:
+        return ""
+
+    found_local = _("The similar name `{name}` was found in the local scope.\n")
+    found_global = _("The similar name `{name}` was found in the global scope.\n")
+    # name_found = _("The name `{name}` was found in the global scope.\n")
+    builtin_similar = _("The Python builtin `{name}` has a similar name.\n")
+
+    if nb_similar_names == 1:
+        if similar["locals"]:
+            return found_local.format(name=similar["locals"][0])
+        if similar["globals"]:
+            return found_global.format(name=similar["globals"][0])
+        return builtin_similar.format(name=similar["builtins"][0])
+
+    message = _(
+        "Instead of writing `{name}`, perhaps you meant one of the following:\n"
+    ).format(name=name)
+
+    for scope, pre in (
+        ("locals", _("*   Local scope: ")),
+        ("globals", _("*   Global scope: ")),
+        ("builtins", _("*   Python builtins: ")),
+    ):
+        if similar[scope]:
+            message += pre + str(similar[scope])[1:-1].replace("'", "`") + "\n"
+
+    return message
+
+
+def missing_self(
+    unknown_name: str, frame: FrameType, tb_data: "TracebackData", hint: Optional[str]
+) -> Tuple[str, Optional[str]]:
+    """If the unknown name is referred to with no '.' before it,
+    and is an attribute of a known object, perhaps 'self.'
+    is missing."""
+    _ = current_lang.translate
+    message = ""
+    try:
+        bad_statement = utils.get_bad_statement(tb_data)
+        tokens = token_utils.get_significant_tokens(bad_statement)
+    except Exception:  # noqa  # pragma: no cover
+        debug_helper.log(
+            "Exception raised in missing_self() while trying to get tokens"
+        )
+        return message, hint
+
+    if not tokens:  # pragma: no cover
+        debug_helper.log("No significant token found in missing_self()")
+        return message, hint
+
+    prev_token = tokens[0]
+    for index, token in enumerate(tokens):
+        if token == unknown_name and prev_token != ".":
+            break
+        prev_token = token
+    else:
+        return message, hint
+
+    first_arg_self = False
+    if (
+        len(tokens) > index + 3
+        and tokens[index + 1] == "("
+        and tokens[index + 2] == "self"
+    ):
+        first_arg_self = True
+
+    env = (("local", frame.f_locals), ("global", frame.f_globals))
+
+    for scope, dict_ in env:
+        names = info_variables.get_variables_in_frame_by_scope(frame, scope)
+        dict_copy = dict(dict_)
+        for name in names:
+            if name in dict_copy:
+                obj = dict_copy[name]
+                known_attributes = dir(obj)
+                if unknown_name in known_attributes:
+                    suggest = ""
+                    obj_repr = info_variables.simplify_repr(repr(obj), splitlines=False)
+                    if first_arg_self and name == "self":
+                        suggest = _("Did you write `self` at the wrong place?\n")
+                        message = _(
+                            "The {scope} object `{obj}`\n"
+                            "has an attribute named `{unknown_name}`.\n"
+                            "Perhaps you should have written `self.{unknown_name}(...`\n"
+                            "instead of `{unknown_name}(self, ...`.\n"
+                        ).format(scope=scope, obj=obj_repr, unknown_name=unknown_name)
+                    elif name == "self":
+                        suggest = _("Did you forget to add `self.`?\n")
+                        message = _(
+                            "A {scope} object, `{obj}`,\n"
+                            "has an attribute named `{unknown_name}`.\n"
+                            "Perhaps you should have written `self.{unknown_name}`\n"
+                            "instead of `{unknown_name}`.\n"
+                        ).format(scope=scope, obj=obj_repr, unknown_name=unknown_name)
+                    else:
+                        suggest = _("Did you forget to add `{name}.`?\n").format(
+                            name=name
+                        )
+                        message = _(
+                            "The {scope} object `{name}`\n"
+                            "has an attribute named `{unknown_name}`.\n"
+                            "Perhaps you should have written `{name}.{unknown_name}`\n"
+                            "instead of `{unknown_name}`.\n"
+                        ).format(scope=scope, name=name, unknown_name=unknown_name)
+                    if suggest:
+                        if hint is None:
+                            hint = suggest
+                        else:
+                            hint += suggest
+                        return message, hint
+
+    return message, hint
