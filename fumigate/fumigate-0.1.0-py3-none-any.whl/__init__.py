@@ -1,0 +1,1 @@
+from fumigate.multiplication import Multiplication
