@@ -1,0 +1,3 @@
+
+def gl():
+    return globals()
