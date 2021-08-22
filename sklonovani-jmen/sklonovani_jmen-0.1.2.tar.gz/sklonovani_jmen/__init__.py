@@ -1,0 +1,1 @@
+from sklonovani_jmen.main import Client
