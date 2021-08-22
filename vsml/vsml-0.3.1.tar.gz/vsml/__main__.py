@@ -1,0 +1,51 @@
+from .func import *
+import os
+import time
+
+path = f"{os.path.expanduser('~')}/vsmltesting/test.vsml"
+if not os.path.isdir(f"{os.path.expanduser('~')}/vsmltesting"):
+    os.mkdir(f"{os.path.expanduser('~')}/vsmltesting")
+if not os.path.isfile(path):
+    print("creating file")
+    with open(path, "w") as f:
+        f.write("[testSection1]\ntestKey1=testValue1\n\n[testSection2]\ntestKey2=testValue2")
+print("\033[1m\033[92mstarting timer\033[0m")
+startTime = time.time()
+print("\033[1m\033[92minitializing file\033[0m")
+initFile(path)
+print("\033[1m\033[92mreading value of testKey1 from testSection1\033[0m")
+print(readKeyValue(path, "testKey1", "testSection1"))
+print("\033[1m\033[92mreading value of testKey1 from testSection2\033[0m")
+print(readKeyValue(path, "testKey1", "testSection2"))
+print("\033[1m\033[92madding testKey2 key to testSection1 with value of testValue2\033[0m")
+add(path, section="testSection1", key="testKey2", value="testValue2")
+print("\033[1m\033[92mreading value of testKey2 from testSection1\033[0m")
+print(readKeyValue(path, "testKey2", "testSection1"))
+print("\033[1m\033[92madding testKey2 key to testSection2 with value of testValue2\033[0m")
+add(path, section="testSection2", key="testKey2", value="testValue2")
+print("\033[1m\033[92mreading value of testKey2 from testSection2\033[0m")
+print(readKeyValue(path, "testKey2", "testSection2"))
+print("\033[1m\033[92mfinding start of testSection1\033[0m")
+print(findSec(path, "testSection1")[0])
+print("\033[1m\033[92mfinding start of testSection2\033[0m")
+print(findSec(path, "testSection2")[0])
+print("\033[1m\033[92mfinding end of testSection1\033[0m")
+print(findSec(path, "testSection1")[1])
+print("\033[1m\033[92mfinding end of testSection2\033[0m")
+print(findSec(path, "testSection2")[1])
+print("\033[1m\033[92mfinding location of testkey1 in testSection1\033[0m")
+print(findKey(path, "testKey1", "testSection1"))
+print("\033[1m\033[92mfinding location of testkey1 in testSection2\033[0m")
+print(findKey(path, "testKey1", "testSection2"))
+print("\033[1m\033[92mrenaming testKey1 from testSection2 to testKey3\033[0m")
+rename(path, "testKey3", "testSection2", key="testKey1")
+print("\033[1m\033[92mchanging value of testKey3 to testValue3\033[0m")
+editKeyValue(path, "testKey3", "testValue3", "testSection2")
+print("\033[1m\033[92mreading value of testKey3 from testSection2\033[0m")
+print(readKeyValue(path, "testKey3", "testSection2"))
+print("\033[1m\033[92mdeleting testKey3 from testSection2\033[0m")
+delete(path, section="testSection2", key="testKey3")
+print("\033[1m\033[92mre-adding testKey1 key to testSection2 with value of testValue1\033[0m")
+add(path, section="testSection2", key="testKey1", value="testValue1")
+executionTime = (time.time() - startTime) / 1000
+print("execution time: " + str(executionTime)[:4] + "ms")
