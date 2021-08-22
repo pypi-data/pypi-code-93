@@ -1,0 +1,16 @@
+"""
+StopWatch operates on a notion of "spans" which represent scopes of code for which we
+want to measure timing. Spans can be nested and placed inside loops for aggregation.
+
+StopWatch requires a root scope which upon completion signifies the end of the round
+of measurements. On a server, you might use a single request as your root scope.
+
+StopWatch produces two kinds of reports.
+1) Aggregated (see _reported_values).
+2) Non-aggregated or "tracing" (see _reported_traces).
+"""
+
+
+__version__ = "0.1.0"
+__name__ = "k3stopwatch"
+
