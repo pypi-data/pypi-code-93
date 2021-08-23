@@ -1,0 +1,1 @@
+from .rfkadapter import DBFAdapter, RFKAdapter, Field, Type, FieldError, HarbourError, _EXE
