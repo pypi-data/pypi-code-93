@@ -1,0 +1,7 @@
+import django
+
+SECRET_KEY = "_UNITTESTING_UNITTESTING__UNITTESTING_UNITTESTING_"
+
+DEBUG = True
+
+django.setup()
