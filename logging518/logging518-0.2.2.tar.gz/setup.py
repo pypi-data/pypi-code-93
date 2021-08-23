@@ -1,0 +1,30 @@
+# -*- coding: utf-8 -*-
+from setuptools import setup
+
+packages = \
+['logging518']
+
+package_data = \
+{'': ['*']}
+
+install_requires = \
+['toml>=0.10,<0.11']
+
+setup_kwargs = {
+    'name': 'logging518',
+    'version': '0.2.2',
+    'description': "Configure Python's native logging module using pyproject.toml",
+    'long_description': '# logging518\n\n[![PyPI version](https://badge.fury.io/py/logging518.svg)](https://badge.fury.io/py/logging518) ![PyPI - Downloads](https://img.shields.io/pypi/dm/logging518)\n\nConfigure Python\'s native `logging` library using `pyproject.toml`\n\n# About\n`logging518` is simply a wrapper around the [`logging` module in the standard library](https://docs.python.org/3/library/logging.html). It allows a developer to configure the module within the `pyproject.toml` config file instead of using an additional `.ini` or `.conf` config file as specified when using the `fileConfig()` method.\n\nWhy use `pyproject.toml` instead of `logging.conf`?\n\n[PEP 518](https://www.python.org/dev/peps/pep-0518/) introduced a new config file, `pyproject.toml`, for specifying build dependecies. [An interesting side effect](https://snarky.ca/what-the-heck-is-pyproject-toml/) of this new config file standard is that many tools started allowing developers to configure them using the `pyproject.toml` file that likely already existed in their project.\n\nUsing a single, universal config file helps declutter all of those additional config files for each tool (many those `.conf`, `.ini`, `.yml`, etc. files at the root level) bringing some minimalism back in our lives.\n\n\n# Usage\nUnder the hood, `logging518` parses the `pyproject.toml` file using the [`toml` library](https://github.com/uiri/toml) and then passes that output to the `dictConfig()` method.\n\nFollowing the spec in PEP 518 pertaining to the [tool table](https://www.python.org/dev/peps/pep-0518/#tool-table), `logging518` will recognize all config values associated with the `tool.logging518` key.\n\nAny config option specified in the [`logging` configuration dictionary schema](https://docs.python.org/3/library/logging.config.html#configuration-dictionary-schema) is allowed.\n\n## Installation\n\n```python\npip install logging518\n```\n\n## Example Config\n\nBelow is an example `pyproject.toml` file associated with a project using [Poetry](https://python-poetry.org).\n\n```toml\n# pyproject.toml\n\n[tool.poetry]\nname = "picklr"\nversion = "0.1.0"\ndescription = "Turns anything into a pickle"\nauthors = ["Rick Sanchez <rdawgg9000@gmail.com>"]\n\n[tool.poetry.dependencies]\npython = "^3.8"\n\n[tool.poetry.dev-dependencies]\npytest = "^5.2"\n\n[build-system]\nrequires = ["poetry-core>=1.0.0"]\nbuild-backend = "poetry.core.masonry.api"\n\n# ------------- logging518 configured below -------------\n\n[tool.logging518]\nversion = 1\ndisable_existing_loggers = true\n\n[tool.logging518.formatters.standard]\nformat = "%(asctime)s %(levelname)-8s %(name)-15s %(message)s"\n\n[tool.logging518.handlers.console]\nclass = "logging.StreamHandler"\nformatter = "standard"\nlevel = "ERROR"\nstream = "ext://sys.stdout"\n\n[tool.logging518.handlers.file]\nclass = "logging.FileHandler"\nformatter = "standard"\nlevel = "DEBUG"\nfilename = "picklr.log"\nmode = "w"\n\n[tool.logging518.root]\nhandlers = ["console", "file"]\nlevel = "NOTSET"\n```\n\nThe configuration above:\n\n1. Created a formatter called "standard"\n2. Created 2 handlers (one for logging to the console and the other for writing to a `.log` file) that both use the formatter created above\n3. Configured the root logger to use both handlers created\n\n\nWhen parsed by `logging518` the above configuration will turn into the below KV object:\n\n```json\n{\n    "version": 1,\n    "disable_existing_loggers": true,\n    "formatters": {\n        "standard": {\n            "format": "%(asctime)s %(levelname)-8s %(name)-15s %(message)s"\n        }\n    },\n    "handlers": {\n        "console": {\n            "class": "logging.StreamHandler",\n            "formatter": "standard",\n            "level": "ERROR",\n            "stream": "ext://sys.stdout",\n        },\n        "file": {\n            "class": "logging.FileHandler",\n            "formatter": "standard",\n            "level": "DEBUG",\n            "filename": "picklr.log",\n            "mode": "w",\n        },\n    },\n    "root": {\n        "handlers": ["console", "file"], \n        "level": "NOTSET"\n    },\n}\n```\n\n**NOTE**: Please see [this StackOverflow post](https://stackoverflow.com/a/7507842) for an dictionary example with `dictConfig()`.\n\n\n## Using the logger\n\nTo access the root logger:\n\n```python\nfrom logging518 import logger\n\nlogger.info("This will be an info message")\n```\n\nThe `logger` object accessed from `logging518` is normal a [regular `Logger` object](https://docs.python.org/3/library/logging.html#logging.Logger) from the `logging` module meaning all of the methods you would normally use are available to you. Note that this is actually the root logger.\n\nPrefer to use `log` instead `logger` when you create a `Logger` object? The below works too (and is just a copy of the `logger` object demoed above):\n\n```python\nfrom logging518 import log\n\nlog.info("This will be an info message")\n```\n\nTo access a logger other than the root, you can use the `get_logger` method:\n\n```python\nfrom logging518 import get_logger\n\nlogger = get_logger("foo")\nassert logger.name == "foo"\n```\n\n## Debugging your configuration\n\nIf you would like to peak under the hood and see the dictionary object passed in to `dictConfig()` you can import `debug_config`:\n\n```python\nfrom pprint import pprint\nfrom logging518 import debug_config\n\npprint(debug_config)\n```',
+    'author': 'Michael Harris',
+    'author_email': 'michael.harrisru@gmail.com',
+    'maintainer': None,
+    'maintainer_email': None,
+    'url': 'https://github.com/mharrisb1/logging518',
+    'packages': packages,
+    'package_data': package_data,
+    'install_requires': install_requires,
+    'python_requires': '>=3.6,<4.0',
+}
+
+
+setup(**setup_kwargs)
