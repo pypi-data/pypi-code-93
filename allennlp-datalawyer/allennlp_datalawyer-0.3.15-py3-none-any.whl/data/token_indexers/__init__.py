@@ -1,0 +1,1 @@
+from allennlp_datalawyer.data.token_indexers.nilc_indexer import NILCTokenIndexer

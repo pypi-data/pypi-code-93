@@ -1,0 +1,1 @@
+from allennlp_datalawyer.predictors.sentence_tagger_pt import SentenceTaggerPredictor
