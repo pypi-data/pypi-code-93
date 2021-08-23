@@ -1,0 +1,30 @@
+# -*- coding: utf-8 -*-
+from setuptools import setup
+
+packages = \
+['wikitools3']
+
+package_data = \
+{'': ['*']}
+
+install_requires = \
+['poster3>=0.8.1,<0.9.0']
+
+setup_kwargs = {
+    'name': 'wikitools3',
+    'version': '3.0.0',
+    'description': 'Python package for interacting with a MediaWiki wiki. It is used by WikiTeam for archiving MediaWiki wikis.',
+    'long_description': '# `wikitools3` — Package for working with MediaWiki wikis\n\n## Requirements\n\n  * Python 3. Not compatible with Python 2. If you are using Python 2, use the original [`wikitools`](https://pypi.org/project/wikitools/) instead.\n  * `wikitools3` uses [`poetry`](https://python-poetry.org/) for dependency management. If you are installing via `pip`, you should not need to install `poetry` separately.\n  * To upload files or import XML, you need Chris AtLee\'s [`poster3`](http://pypi.python.org/pypi/poster3) package. This should be automatically installed by `pip` and/or `poetry` when you install `wikitools3`.\n  * The MediaWiki instance you are working with should be version 1.13 or later and have the API enabled.\n\n## Installation\n\n  * Run `pip install wikitools3`. This is the preferred installation method.\n  * Alternately, download the source repository and run `poetry install` within the `wikitools3` directory or copy the `wikitools3/wikitools3` subdirectory directly into the top-level directory of your project.\n\n## Available modules\n\n  * `api.py` - Contains the `APIRequest` class, for doing queries directly, see API examples below\n  * `wiki.py` - Contains the `Wiki` class, used for logging in to the site, storing cookies, and storing basic site information\n  * `page.py` - Contains the `Page` class for dealing with individual pages on the wiki. Can be used to get page info and text, as well as edit and other actions if enabled on the wiki\n  * `category.py` - `Category` is a subclass of `Page` with extra functions for working with categories\n  * `wikifile.py` - `File` is a subclass of `Page` with extra functions for working with files - note that there may be some issues with shared repositories, as the pages for files on shared repos technically don\'t exist on the local wiki.\n  * `user.py` - Contains the `User` class for getting information about and blocking/unblocking users\n  * `pagelist.py` - Contains several functions for getting a list of `Page` objects from lists of titles, pageids, or API query results\n\n## Further documentation\n\n  * See also: the legacy `wikitools` documentation at [Google Code](https://code.google.com/p/python-wikitools/wiki/Documentation).\n\n## Current limitations\n\n  * Can only do what the API can do. On a site without the edit-API enabled (disabled by default prior to MediaWiki 1.14), you cannot edit/delete/protect pages, only retrieve information about them.\n  * May have issues with some non-ASCII characters. Most of these bugs should be resolved, though full UTF-8 support is still a little flaky.\n  * Usage on restricted-access (logged-out users can\'t read) wikis is mostly untested.\n  * `wikitools3` has not been tested beyond the needs of `wikiteam`. If functionality from `wikitools` for Python 2 works for you, but the same functionality does not work for you in `wikitools3`, please submit a bug report at [github.com/elsiehupp/wikitools3/issues](https://github.com/elsiehupp/wikitools3/issues).\n\n## Quick start\n\nTo make a simple query:\n\n```python\n#!/usr/bin/env python3\n\nfrom wikitools3 import wiki\nfrom wikitools3 import api\n\n# create a Wiki object\nsite = wiki.Wiki("http://my.wikisite.org/w/api.php") \n# login - required for read-restricted wikis\nsite.login("username", "password")\n# define the params for the query\nparams = {\'action\':\'query\', \'titles\':\'Main Page\'}\n# create the request object\nrequest = api.APIRequest(site, params)\n# query the API\nresult = request.query()\n```\n\nThe result will look something like:\n\n```json\n{u\'query\':\n\t{u\'pages\':\n\t\t{u\'15580374\':\n\t\t\t{u\'ns\': 0, u\'pageid\': 15580374, u\'title\': u\'Main Page\'}\n\t\t}\n\t}\n}\n```\n\nIf the API module you need requires a token, you first do something like:\n```python\nparams = { \'action\':\'query\', \'meta\':\'tokens\' }\ntoken = api.APIRequest(site, params).query()[\'query\'][\'tokens\'][\'csrftoken\']\n# define the params for the query\nparams = { \'action\':\'thank\', \'rev\':diff, \'token\':token }\n```\n\nFor most normal usage, you may not have to do API queries yourself and can just use the various classes. For example, to add a template to the top of all the pages in namespace `0` in a category:\n\n```python\n#!/usr/bin/env python3\n\nfrom wikitools3 import wiki\nfrom wikitools3 import category\n\nsite = wiki.Wiki("http://my.wikisite.org/w/api.php") \nsite.login("username", "password")\n# Create object for "Category:Foo"\ncat = category.Category(site, "Foo")\n# iterate through all the pages in ns 0\nfor article in cat.getAllMembersGen(namespaces=[0]):\n\t# edit each page\n\tarticle.edit(prependtext="{{template}}\\n")\n``` \n\nSee the [MediaWiki API documentation](https://www.mediawiki.org/wiki/API:Main_page) for more information about using the MediaWiki API. You can get an example of what query results will look like by doing the queries in your web browser using the `jsonfm` format option.\n\nLicensed under the [GNU General Public License, version 3](https://www.gnu.org/licenses/gpl-3.0.en.html). A copy of the license is included with this release.\n\nAuthors\n-------\n\n* Original source code Alex Z. (User:Mr.Z-man @ en.wikipedia) <mrzmanwiki@gmail.com>\n* Some code/assistance (User:Bjweeks @ en.wikipedia)\n* Python 3 migration Elsie Hupp ([github.com/elsiehupp](https://github.com/elsiehupp))\n',
+    'author': 'Alex Zaddach',
+    'author_email': 'mrzmanwiki@gmail.com',
+    'maintainer': 'Elsie Hupp',
+    'maintainer_email': 'wikitools3@elsiehupp.com',
+    'url': 'https://github.com/elsiehupp/wikitools3',
+    'packages': packages,
+    'package_data': package_data,
+    'install_requires': install_requires,
+    'python_requires': '>=3,<4',
+}
+
+
+setup(**setup_kwargs)
