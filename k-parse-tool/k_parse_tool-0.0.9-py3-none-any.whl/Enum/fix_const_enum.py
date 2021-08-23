@@ -1,0 +1,1 @@
+REG_CONTENT = "reg_content"
