@@ -1,0 +1,2 @@
+CDN_TASK_SUCCESS_STATE = "Complete"
+CDN_TASK_FAILED_STATE = "Failed"
