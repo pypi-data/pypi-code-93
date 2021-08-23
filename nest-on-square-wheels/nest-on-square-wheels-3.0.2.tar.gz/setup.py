@@ -1,0 +1,114 @@
+# -*- coding: utf-8 -*-
+#
+# setup.py
+#
+# This file is part of NEST.
+#
+# Copyright (C) 2004 The NEST Initiative
+#
+# NEST is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# NEST is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with NEST.  If not, see <http://www.gnu.org/licenses/>.
+
+from setuptools import setup
+from setuptools.command.install import install
+import os
+import sys
+import subprocess
+
+opt = dict()
+flags = dict(
+    mpi="Dwith-MPI",
+)
+
+class install_command(install):
+    user_options = install.user_options + [
+        ('mpi=', None, 'enable MPI support. (OFF|ON|</path/to/mpi> [default=OFF])'),
+        ('jobs=', None, 'Amount of CMake jobs. All available cores by default.'),
+    ]
+
+    def initialize_options(self):
+        install.initialize_options(self)
+        self.mpi = None
+        self.jobs = None
+
+    def finalize_options(self):
+        install.finalize_options(self)
+        opt["mpi"] = self.mpi
+        opt["j"] = self.jobs or ""
+
+    def run(self):
+        env = os.environ.copy()
+        cmake_flags = []
+        for option, flag in flags.items():
+            value = opt.get(option, None)
+            if value is not None:
+                cmake_flags.append(f"-{flag}={value}")
+
+        # Since we're sneaking CMake in during the install command, the `install_requires`
+        # dependencies aren't installed yet at this point, so we install Cython ourselves.
+        subprocess.check_call(f"{sys.executable} -m pip install --upgrade cython", env=env, shell=True)
+        # Alias `python` to the current executable to make sure we install to the right
+        # interpreter, then run the CMake install procedure on the packaged data folder.
+        py_alias = f"alias python='{sys.executable}'"
+        j = opt.get("j", "")
+        cmake = "cmake data " + " ".join(cmake_flags) + "; make install -j " + j
+        subprocess.check_call(f"{py_alias}; {cmake}", env=env, shell=True)
+        # Continue on with install procedure
+        install.run(self)
+
+
+setup(
+    name='nest-on-square-wheels',
+    version='3.0.2',
+    description='Python bindings for NEST',
+    author='The NEST Initiative',
+    author_email='info@nest-initiative.org',
+    url='https://www.nest-simulator.org',
+    license='GPLv2+',
+    packages=['nest', 'nest.tests', 'nest.tests.test_sp',
+              'nest.tests.test_spatial', 'nest.lib'],
+    install_requires=['numpy'],
+    extras_require={
+        'test': ['nose', 'matplotlib']
+    },
+    cmdclass={
+        'install': install_command,
+    },
+    classifiers=[
+        'Development Status :: 6 - Mature',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Intended Audience :: Science/Research',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+
+    ],
+    python_requires='>=3.8, <4',
+    keywords=(
+        'nest,'
+        + 'simulator,'
+        + 'neuroscience,'
+        + 'neural,'
+        + 'neuron,'
+        + 'network,'
+        + 'ai,'
+        + 'spike,'
+        + 'spiking'
+    ),
+    project_urls={
+        'Homepage': 'https://www.nest-simulator.org/',
+        'Bug Reports': 'https://github.com/nest/nest-simulator/issues',
+        'Source': 'https://github.com/nest/nest-simulator',
+        'Documentation': 'https://nest-simulator.readthedocs.io/'
+    },
+)
