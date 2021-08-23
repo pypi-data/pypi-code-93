@@ -1,0 +1,53 @@
+from setuptools import find_packages, setup
+
+setup(
+    name="elg",
+    version="0.4.16",
+    author="ELG Technical Team",
+    url="https://gitlab.com/european-language-grid/platform/python-client",
+    author_email="contact@european-language-grid.eu",
+    description="Use the European Language Grid in your Python projects",
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
+    keywords="tools, sdk, language technology, europe, european, nlp",
+    license="MIT",
+    packages=find_packages(exclude=("tests",)),
+    install_requires=[
+        "requests>=2.25",
+        "tqdm>=4.49",
+        "pandas>=1.2",
+        "loguru>=0.5",
+        "pydantic>=1.7.4",
+    ],
+    extras_require={
+        "flask": [
+            "flask>=2.0",
+            "Flask-JSON>=0.3",
+            "docker>=5.0",
+            "requests_toolbelt>=0.9",
+        ],
+        "quart": [
+            "quart>=0.15.1",
+            "aiohttp>=3.7",
+            "docker>=5.0",
+            "requests_toolbelt>=0.9",
+        ],
+        "quality": ["black==21.4b0", "isort==5.5.4"],
+    },
+    entry_points={"console_scripts": ["elg=elg.cli.elg:main"]},
+    python_requires=">=3.6.0",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Education",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    ],
+)
