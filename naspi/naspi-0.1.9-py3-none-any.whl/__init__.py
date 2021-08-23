@@ -1,0 +1,1 @@
+from .naspi import main
