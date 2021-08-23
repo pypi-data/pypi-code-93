@@ -1,0 +1,1 @@
+from ebase.script import DetaBase
