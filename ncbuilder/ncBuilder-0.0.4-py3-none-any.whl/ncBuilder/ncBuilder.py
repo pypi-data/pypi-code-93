@@ -1,0 +1,231 @@
+# -*- coding: utf-8 -*-
+import os
+import datetime as dt
+import netCDF4 as nc
+import numpy as np
+
+
+def create_nc_dimension(nc_file, shape):
+    """
+    Cria as dimensoes do arquivo (x, y, z, w)
+        time = UNLIMITED ;
+        level = UNLIMITED ;
+        latitude = shape[0] ;
+        longitude = shape[1] ;
+
+    Parameters
+    ----------
+    nc_file : netCDF4.Dataset
+        Dataset file to create the dimensions.
+    shape : tuple
+        Shape of the grid, shape=(latitude.size, longitude.size).
+
+    Returns
+    -------
+    : bool
+        Returns True if the dimensions are created correctly, else returns
+        False.
+        
+    """
+    try:
+        nc_file.createDimension("latitude", shape[0])
+        nc_file.createDimension("longitude", shape[1])
+        nc_file.createDimension("level")
+        nc_file.createDimension("time")
+        return True
+    except:
+        return False
+
+
+def create_nc_variable(nc_file, var, comp_lvl=6, **kwargs):
+    '''
+    Creates the new variable needed into the given dataset.
+
+    Parameters
+    ----------
+    nc_file : netCDF4.Dataset
+        Dataset file that will be added a new variable.
+    var : str
+        Variable name.
+    comp_lvl : int, optional
+        Compression level.
+
+    Optional Parameters
+    -------------------
+    dims : tuple
+        Representing which dimensions from the nc_file itself will be
+        used for the new variable.
+    dtype : dtype
+        The dtype of the new variable.
+    long_name : str
+        Long name of the variable.
+    standard_name : str
+        The standard name of the variable.
+    units : str
+        Unit of the variable.
+        
+    '''
+    nc_file.createVariable(var,
+                           kwargs.get('dtype', np.float32),
+                           kwargs.get('dims', ('time',
+                                               'level',
+                                               'latitude',
+                                               'longitude')),
+                           zlib=True,
+                           complevel=int(comp_lvl),
+                           fill_value=np.nan)
+    nc_file.variables[var].long_name = kwargs.get('long_name', var)
+    nc_file.variables[var].standard_name = kwargs.get('standard_name', var)
+    nc_file.variables[var].units = kwargs.get('units', var)
+
+
+def update_nc(nc_file, var, data, dims=[slice(None), ]):
+    """
+    Updates the variable given, within the slice parsed.
+
+    Parameters
+    ----------
+    nc_file : netCDF4.Dataset
+        A dataset containing the dimensions and variable already available to
+        be inputed.
+    var : str
+        Key that'll be used to input the data.
+    data : np.ndarray
+        Array that will be input inside the dataset variable, if it's smaller
+        than the full shape it's needed to parse the dims variable to get the
+        proper slice to input the data. It must have the same dimensions as
+        target variable.
+    dims : tuple, list, optional
+        It's a tuple/list of slices that represent the position which the data must
+        be input inside the dataset variable.
+
+    Returns
+    -------
+    : bool
+
+    """
+    nc_file.variables[var][dims] = data[:]
+    nc_file.sync()
+    return True
+
+
+def initialize_nc(dtNow, filePath='./', fileSuffix='.nc'):
+    return nc.Dataset(_file_path(dtNow, filePath, fileSuffix), 'w')
+
+
+def open_file(dtNow, filePath='./', fileSuffix='.nc'):
+    return nc.Dataset(_file_path(dtNow, filePath, fileSuffix), 'r+')
+
+
+def _file_path(dtNow, filePath='./', fileSuffix='.nc'):
+    if isinstance(dtNow, (dt.datetime, dt.date)):
+        return os.path.join(f'{filePath}', dtNow.strftime(f'%Y%m%d{fileSuffix}'))
+    elif isinstance(dtNow, str):
+        return os.path.join(f'{filePath}', f'{dtNow}{fileSuffix}')
+    else:
+        raise 'Invalid dtNow type, must be str, dt.datetime or dt.date'
+        
+
+def create_nc(nc_file, lat, lon, comp_lvl=6, **kwargs):
+    '''
+    Create the initial variables and dimensions.
+
+    Prepares the dataset file creating its dimensions, creating parsed variables
+    and setting up the basic metadata.
+
+    Parameters
+    ----------
+    nc_file : netCDF4.Dataset
+        The netCDF4.Dataset that will be prepared with dimensions and (optional)
+        variables.
+    lat : np.ndarray
+        Array containing increasing values for latitudes.
+    lon : np.ndarray
+        Array containing increasing valeus for longitudes.
+    comp_lvl : int
+        Compression level for the netCDF4 variables.
+
+    Optional Parameters
+    -------------------
+    time : np.ndarray, list
+        A array-like containing the datetimes of the time dimension,
+        else it's used the dtNow value for 1-sized dimension.
+    level : np.ndarray, list
+        A array-like containing the float values of the level dimension,
+        else it's used only a 1000.
+    vars : dict
+        A dictionary containing each variable that will be used
+        (those can be added later too), parsing a dictionary with the
+        dimensions that will be used such as time, level, latitude or
+        longitude. Moreover you can give the dtype, long_name,
+        standard_name and units of the variable.
+    
+    Examples
+    --------
+    Needs dict of variables to be used:
+    {'vars':
+        {'temp':
+            {'dims': ('time', 'level', 'latitude', 'longitude'),
+             'dtype': np.float64,
+             'long_name': 'temperature',
+             'standard_name': 'temperature in C',
+             'units': 'C'
+            },
+        }
+    }
+
+    Notes
+    -----
+    The time dimension will be composed of floats, with the default delta is
+    in hours, but it won't be a problem as a float can represent different
+    fractions of time.
+    
+    '''
+    is_dimensions = create_nc_dimension(nc_file, [len(lat), len(lon)])
+
+    if is_dimensions:
+        time_arr = kwargs.get('time',
+                              np.array([dt.datetime.now().replace(hour=0,
+                                                                  minute=0,
+                                                                  second=0)]))
+        level_arr = kwargs.get('level', np.array([1000., ]))
+        header_time = time_arr[0]
+        float_time_arr = np.array([(time - header_time).total_seconds() / 3600.
+                                   for time in time_arr], dtype=np.float64)
+
+        time_units = header_time.strftime('hours since %Y-%m-%d %H:%M:%S')
+        nc_file.createVariable('time', 'f8', ('time', ))
+        nc_file.variables['time'].long_name = 'Time'
+        nc_file.variables['time'].standard_name = 'times'
+        nc_file.variables['time'].units = time_units
+        nc_file.variables['time'][:] = float_time_arr
+        
+        nc_file.createVariable('level', 'f8', ('level', ))
+        nc_file.variables['level'].long_name = 'Level'
+        nc_file.variables['level'].standard_name = 'air_pressure'
+        nc_file.variables['level'].units = 'hPa'
+        nc_file.variables['level'][:] = level_arr
+
+        nc_file.createVariable('latitude', 'f8', ('latitude', ))
+        nc_file.variables['latitude'].long_name = 'Latitude'
+        nc_file.variables['latitude'].standard_name = 'latitude'
+        nc_file.variables['latitude'].units = 'degrees_north'
+        nc_file.variables['latitude'][:] = lat
+
+        nc_file.createVariable('longitude', 'f8', ('longitude', ))
+        nc_file.variables['longitude'].long_name = 'Longitude'
+        nc_file.variables['longitude'].standard_name = 'longitude'
+        nc_file.variables['longitude'].units = 'degrees_east'
+        nc_file.variables['longitude'][:] = lon
+
+        for var, var_kwargs in kwargs.get('vars', {}).items():
+            create_nc_variable(nc_file, var, comp_lvl, **var_kwargs)
+        
+    nc_file.Conventions = "CF-1.4"
+    nc_file.Metadata_Conventions = "Unidata Dataset Discovery v1.0"
+
+    nc_file.HISTORY = "Created by Chico and Zang's mathmagical utility at " + \
+        dt.datetime.now().strftime('%Y-%m-%dT%H:%M')
+    nc_file.sync()
+
+    return(lat, lon)
