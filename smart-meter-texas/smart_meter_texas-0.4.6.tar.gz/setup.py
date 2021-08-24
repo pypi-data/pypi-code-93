@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+
+"""The setup script."""
+
+from setuptools import setup, find_packages
+
+with open("README.rst") as readme_file:
+    readme = readme_file.read()
+
+requirements = ["aiohttp>=3.6.0", "python-dateutil>=2.8.1", "tenacity>=6.2.0"]
+
+setup_requirements = ["pytest-runner"]
+
+test_requirements = ["pytest>=3"]
+
+setup(
+    author="Graham Wetzler",
+    author_email="graham@wetzler.dev",
+    python_requires=">=3.6",
+    classifiers=[
+        "Development Status :: 2 - Pre-Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Natural Language :: English",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+    ],
+    description="Package to connect to and retrieve data from the unofficial \
+Smart Meter Texas API",
+    install_requires=requirements,
+    license="MIT license",
+    long_description=readme,
+    include_package_data=True,
+    keywords="smart_meter_texas",
+    name="smart_meter_texas",
+    packages=find_packages(include=["smart_meter_texas", "smart_meter_texas.*"]),
+    setup_requires=setup_requirements,
+    test_suite="tests",
+    tests_require=test_requirements,
+    url="https://github.com/grahamwetzler/smart-meter-texas",
+    version="0.4.6",
+    zip_safe=False,
+)
