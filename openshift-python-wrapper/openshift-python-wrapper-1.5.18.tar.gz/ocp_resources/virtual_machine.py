@@ -1,0 +1,143 @@
+# -*- coding: utf-8 -*-
+
+import logging
+
+from urllib3.exceptions import ProtocolError
+
+from ocp_resources.resource import TIMEOUT, NamespacedResource
+from ocp_resources.utils import TimeoutSampler
+from ocp_resources.virtual_machine_instance import VirtualMachineInstance
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+class VirtualMachine(NamespacedResource):
+    """
+    Virtual Machine object, inherited from Resource.
+    Implements actions start / stop / status / wait for VM status / is running
+    """
+
+    api_group = NamespacedResource.ApiGroup.KUBEVIRT_IO
+
+    class RunStrategy:
+        MANUAL = "Manual"
+        HALTED = "Halted"
+        ALWAYS = "Always"
+        RERUNONFAILURE = "RerunOnFailure"
+
+    def __init__(
+        self,
+        name=None,
+        namespace=None,
+        client=None,
+        body=None,
+        teardown=True,
+        privileged_client=None,
+        yaml_file=None,
+    ):
+        super().__init__(
+            name=name,
+            namespace=namespace,
+            client=client,
+            teardown=teardown,
+            privileged_client=privileged_client,
+            yaml_file=yaml_file,
+        )
+        self.body = body
+
+    @property
+    def _subresource_api_url(self):
+        return (
+            f"{self.client.configuration.host}/"
+            f"apis/subresources.kubevirt.io/{self.api().api_version}/"
+            f"namespaces/{self.namespace}/virtualmachines/{self.name}"
+        )
+
+    def api_request(self, method, action, **params):
+        return super().api_request(
+            method=method, action=action, url=self._subresource_api_url, **params
+        )
+
+    def to_dict(self):
+        res = super().to_dict()
+        if self.yaml_file:
+            return res
+
+        body_spec = self.body.get("spec") if self.body else None
+        res["spec"] = body_spec or {"template": {"spec": {}}}
+        return res
+
+    def start(self, timeout=TIMEOUT, wait=False):
+        self.api_request(method="PUT", action="start")
+        if wait:
+            return self.wait_for_status(timeout=timeout, status=True)
+
+    def restart(self, timeout=TIMEOUT, wait=False):
+        self.api_request(method="PUT", action="restart")
+        if wait:
+            self.vmi.virt_launcher_pod.wait_deleted()
+            return self.vmi.wait_until_running(timeout=timeout, stop_status="dummy")
+
+    def stop(self, timeout=TIMEOUT, wait=False):
+        self.api_request(method="PUT", action="stop")
+        if wait:
+            self.wait_for_status(timeout=timeout, status=None)
+            return self.vmi.wait_deleted()
+
+    def wait_for_status(self, status, timeout=TIMEOUT, sleep=1):
+        """
+        Wait for resource to be in status
+
+        Args:
+            status: Expected status: True for a running VM, None for a stopped VM.
+            timeout (int): Time to wait for the resource.
+
+        Raises:
+            TimeoutExpiredError: If timeout reached.
+        """
+        LOGGER.info(
+            f"Wait for {self.kind} {self.name} status to be {'ready' if status == True else status}"
+        )
+        samples = TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=sleep,
+            exceptions=ProtocolError,
+            func=self.api().get,
+            field_selector=f"metadata.name=={self.name}",
+            namespace=self.namespace,
+        )
+        for sample in samples:
+            if sample.items:
+                # VM with runStrategy does not have spec.running attribute
+                # VM status should be taken from spec.status.ready
+                if self.ready == status:
+                    return
+
+    def get_interfaces(self):
+        return self.instance.spec.template.spec.domain.devices.interfaces
+
+    @property
+    def vmi(self):
+        """
+        Get VMI
+
+        Returns:
+            VirtualMachineInstance: VMI
+        """
+        return VirtualMachineInstance(
+            client=self.client,
+            name=self.name,
+            namespace=self.namespace,
+            privileged_client=self.privileged_client or self.client,
+        )
+
+    @property
+    def ready(self):
+        """
+        Get VM status
+
+        Returns:
+            True if Running else None
+        """
+        return self.instance.status["ready"] if self.instance.status else None
