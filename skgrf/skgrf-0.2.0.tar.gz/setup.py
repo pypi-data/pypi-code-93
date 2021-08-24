@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+from setuptools import setup
+
+packages = \
+['skgrf', 'skgrf.ensemble', 'skgrf.tree', 'skgrf.utils']
+
+package_data = \
+{'': ['*'],
+ 'skgrf': ['grf/*',
+           'grf/src/*',
+           'grf/src/analysis/*',
+           'grf/src/commons/*',
+           'grf/src/forest/*',
+           'grf/src/prediction/*',
+           'grf/src/prediction/collector/*',
+           'grf/src/relabeling/*',
+           'grf/src/sampling/*',
+           'grf/src/splitting/*',
+           'grf/src/splitting/factory/*',
+           'grf/src/tree/*',
+           'grf/test/*',
+           'grf/test/analysis/*',
+           'grf/test/commons/*',
+           'grf/test/forest/*',
+           'grf/test/forest/resources/*',
+           'grf/test/prediction/*',
+           'grf/test/relabeling/*',
+           'grf/test/sampling/*',
+           'grf/test/splitting/*',
+           'grf/test/splitting/resources/*',
+           'grf/test/tree/*',
+           'grf/test/utilities/*',
+           'grf/third_party/Eigen/*',
+           'grf/third_party/Eigen/src/Cholesky/*',
+           'grf/third_party/Eigen/src/CholmodSupport/*',
+           'grf/third_party/Eigen/src/Core/*',
+           'grf/third_party/Eigen/src/Core/arch/AVX/*',
+           'grf/third_party/Eigen/src/Core/arch/AVX512/*',
+           'grf/third_party/Eigen/src/Core/arch/AltiVec/*',
+           'grf/third_party/Eigen/src/Core/arch/CUDA/*',
+           'grf/third_party/Eigen/src/Core/arch/Default/*',
+           'grf/third_party/Eigen/src/Core/arch/NEON/*',
+           'grf/third_party/Eigen/src/Core/arch/SSE/*',
+           'grf/third_party/Eigen/src/Core/arch/ZVector/*',
+           'grf/third_party/Eigen/src/Core/functors/*',
+           'grf/third_party/Eigen/src/Core/products/*',
+           'grf/third_party/Eigen/src/Core/util/*',
+           'grf/third_party/Eigen/src/Eigenvalues/*',
+           'grf/third_party/Eigen/src/Geometry/*',
+           'grf/third_party/Eigen/src/Geometry/arch/*',
+           'grf/third_party/Eigen/src/Householder/*',
+           'grf/third_party/Eigen/src/IterativeLinearSolvers/*',
+           'grf/third_party/Eigen/src/Jacobi/*',
+           'grf/third_party/Eigen/src/LU/*',
+           'grf/third_party/Eigen/src/LU/arch/*',
+           'grf/third_party/Eigen/src/MetisSupport/*',
+           'grf/third_party/Eigen/src/OrderingMethods/*',
+           'grf/third_party/Eigen/src/PaStiXSupport/*',
+           'grf/third_party/Eigen/src/PardisoSupport/*',
+           'grf/third_party/Eigen/src/QR/*',
+           'grf/third_party/Eigen/src/SPQRSupport/*',
+           'grf/third_party/Eigen/src/SVD/*',
+           'grf/third_party/Eigen/src/SparseCholesky/*',
+           'grf/third_party/Eigen/src/SparseCore/*',
+           'grf/third_party/Eigen/src/SparseLU/*',
+           'grf/third_party/Eigen/src/SparseQR/*',
+           'grf/third_party/Eigen/src/StlSupport/*',
+           'grf/third_party/Eigen/src/SuperLUSupport/*',
+           'grf/third_party/Eigen/src/UmfPackSupport/*',
+           'grf/third_party/Eigen/src/misc/*',
+           'grf/third_party/Eigen/src/plugins/*',
+           'grf/third_party/optional/*',
+           'grf/third_party/random/*']}
+
+install_requires = \
+['scikit-learn>=0.23.0,<1.0']
+
+setup_kwargs = {
+    'name': 'skgrf',
+    'version': '0.2.0',
+    'description': 'python bindings for C++ generalized random forests (grf)',
+    'long_description': "skgrf\n=====\n\n|actions| |wheels| |rtd| |pypi| |pyversions|\n\n.. |actions| image:: https://github.com/crflynn/skgrf/workflows/build/badge.svg\n    :target: https://github.com/crflynn/skgrf/actions\n\n.. |wheels| image:: https://github.com/crflynn/skgrf-wheels/workflows/wheels/badge.svg\n    :target: https://github.com/crflynn/skgrf-wheels/actions\n\n.. |rtd| image:: https://img.shields.io/readthedocs/skgrf.svg\n    :target: http://skgrf.readthedocs.io/en/latest/\n\n.. |pypi| image:: https://img.shields.io/pypi/v/skgrf.svg\n    :target: https://pypi.python.org/pypi/skgrf\n\n.. |pyversions| image:: https://img.shields.io/pypi/pyversions/skgrf.svg\n    :target: https://pypi.python.org/pypi/skgrf\n\n``skgrf`` provides `scikit-learn <https://scikit-learn.org/stable/index.html>`__ compatible Python bindings to the C++ random forest implementation, `grf <https://github.com/grf-labs/grf>`__, using `Cython <https://cython.readthedocs.io/en/latest/>`__.\n\nThe latest release of ``skgrf`` uses version `2.0.0 <https://github.com/grf-labs/grf/releases/tag/v2.0.0>`__ of ``grf``.\n\n``skgrf`` is still in development. Please create issues for any discrepancies or errors. PRs welcome.\n\nDocumentation\n-------------\n\n* `stable <https://skgrf.readthedocs.io/en/stable/>`__\n* `latest <https://skgrf.readthedocs.io/en/latest/>`__\n\nInstallation\n------------\n\n``skgrf`` is available on `pypi <https://pypi.org/project/skgrf>`__ and can be installed via pip:\n\n.. code-block:: bash\n\n    pip install skgrf\n\nEstimators\n----------\n\n* GRFForestCausalRegressor\n* GRFForestInstrumentalRegressor\n* GRFForestLocalLinearRegressor\n* GRFForestQuantileRegressor\n* GRFForestRegressor\n* GRFBoostedForestRegressor\n* GRFForestSurvival\n\nUsage\n-----\n\nGRFForestRegressor\n~~~~~~~~~~~~~~~~~~\n\nThe ``GRFForestRegressor`` predictor uses ``grf``'s RegressionPredictionStrategy class.\n\n.. code-block:: python\n\n    from sklearn.datasets import load_boston\n    from sklearn.model_selection import train_test_split\n    from skgrf.ensemble import GRFForestRegressor\n    \n    X, y = load_boston(return_X_y=True)\n    X_train, X_test, y_train, y_test = train_test_split(X, y)\n    \n    forest = GRFForestRegressor()\n    forest.fit(X_train, y_train)\n    \n    predictions = forest.predict(X_test)\n    print(predictions)\n    # [31.81349144 32.2734354  16.51560285 11.90284392 39.69744341 21.30367911\n    #  19.52732937 15.82126562 26.49528961 11.27220097 16.02447197 20.01224404\n    #  ...\n    #  20.70674263 17.09041289 12.89671205 20.79787926 21.18317924 25.45553279\n    #  20.82455595]\n\n\nGRFForestQuantileRegressor\n~~~~~~~~~~~~~~~~~~~~~~~~~~\n\nThe ``GRFForestQuantileRegressor`` predictor uses ``grf``'s QuantilePredictionStrategy class.\n\n.. code-block:: python\n\n    from sklearn.datasets import load_boston\n    from sklearn.model_selection import train_test_split\n    from skgrf.ensemble import GRFForestQuantileRegressor\n    \n    X, y = load_boston(return_X_y=True)\n    X_train, X_test, y_train, y_test = train_test_split(X, y)\n    \n    forest = GRFForestQuantileRegressor(quantiles=[0.1, 0.9])\n    forest.fit(X_train, y_train)\n    \n    predictions = forest.predict(X_test)\n    print(predictions)\n    # [[21.9 50. ]\n    # [ 8.5 24.5]\n    # ...\n    # [ 8.4 18.6]\n    # [ 8.1 20. ]]\n\nLicense\n-------\n\n``skgrf`` is licensed under `GPLv3 <https://github.com/crflynn/skgrf/blob/main/LICENSE.txt>`__.\n\nDevelopment\n-----------\n\nTo develop locally, it is recommended to have ``asdf``, ``make`` and a C++ compiler already installed. After cloning, run ``make setup``. This will setup the grf submodule, install python and poetry from ``.tool-versions``, install dependencies using poetry, copy the grf source code into skgrf, and then build and install skgrf in the local virtualenv.\n\nTo format code, run ``make fmt``. This will run isort and black against the .py files.\n\nTo run tests and inspect coverage, run ``make test`` or ``make xtest`` for testing in parallel.\n\nTo rebuild in place after making changes, run ``make build``.\n\nTo create python package artifacts, run ``make dist``.\n\nTo build and view documentation, run ``make docs``.\n",
+    'author': 'flynn',
+    'author_email': 'crf204@gmail.com',
+    'maintainer': None,
+    'maintainer_email': None,
+    'url': 'https://github.com/crflynn/skgrf',
+    'packages': packages,
+    'package_data': package_data,
+    'install_requires': install_requires,
+    'python_requires': '>=3.6.1,<4.0.0',
+}
+from build import *
+build(setup_kwargs)
+
+setup(**setup_kwargs)
