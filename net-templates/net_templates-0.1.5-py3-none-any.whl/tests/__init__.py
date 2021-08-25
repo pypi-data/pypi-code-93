@@ -1,0 +1,1 @@
+from .TemplateBaseTest import BaseTemplateTest
