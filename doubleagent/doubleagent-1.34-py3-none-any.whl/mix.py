@@ -1,0 +1,13 @@
+import random
+
+
+def mix(list):
+
+    kay = []
+    for li in list:
+        random.shuffle(list)
+
+        kay.append(list[0])
+
+    random.shuffle(list)
+    return kay
