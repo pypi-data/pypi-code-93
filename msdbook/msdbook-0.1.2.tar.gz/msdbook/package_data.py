@@ -1,0 +1,90 @@
+import pkg_resources
+
+import numpy as np
+import pandas as pd
+
+
+def load_robustness_data():
+    """Load robustness solution data from file.  For use in 'fishery_dynamics.ipynb'"""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/Robustness.txt')
+
+    return np.loadtxt(f, delimiter=' ')
+
+
+def load_profit_maximization_data():
+    """Load profit-maximizing solution data from file.  For use in 'fishery_dynamics.ipynb'"""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/solutions.resultfile')
+
+    return np.loadtxt(f)
+
+
+def load_saltelli_param_values():
+    """Load Saltelli parameter values from file.  For use in 'fishery_dynamics.ipynb'"""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/param_values.csv')
+
+    return np.loadtxt(f, delimiter=',')
+
+
+def load_collapse_data():
+    """Load the predator population collapse data from file.  For use in 'fishery_dynamics.ipynb'"""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/collapse_days.csv')
+
+    return np.loadtxt(f, delimiter=',')
+
+
+def load_lhs_basin_sample():
+    """Load LHS sample data from file.  For use in 'basin_users_logistic_regression.ipynb'"""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/LHsamples_original_1000.txt')
+
+    return np.loadtxt(f)
+
+
+def load_basin_param_bounds():
+    """Load parameter bounds data from file.  For use in 'basin_users_logistic_regression.ipynb'"""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/uncertain_params_bounds.txt')
+
+    return np.loadtxt(f, usecols=(1, 2))
+
+
+def load_user_heatmap_array(user_id):
+    """Load the heatmap array associated with the target user ID.
+
+    For use in 'basin_users_logistic_regression.ipynb'
+
+    """
+
+    f = pkg_resources.resource_filename('msdbook', f'data/{user_id}_heatmap.npy')
+
+    return np.load(f)
+
+
+def load_user_pseudo_scores(user_id):
+    """Load the pseudo r scores associated with the target user ID.
+
+    For use in 'basin_users_logistic_regression.ipynb'
+
+    """
+
+    f = pkg_resources.resource_filename('msdbook', f'data/{user_id}_pseudo_r_scores.csv')
+
+    return pd.read_csv(f)
+
+
+def load_hymod_input_file():
+    """Load data from file."""
+
+    f = pkg_resources.resource_filename('msdbook', 'data/LeafCatch.csv')
+
+    return pd.read_csv(f, sep=',')
+
+
+def load_hymod_schematic():
+    """Load HYMOD schematic figure.  For use in 'hymod.ipynb'"""
+
+    return pkg_resources.resource_filename('msdbook', 'data/Schematic-representation-of-the-HYMOD-conceptual-watershed-model.png')
