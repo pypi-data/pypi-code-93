@@ -1,0 +1,181 @@
+# -*- coding: utf-8 -*-
+
+"""API utilities for KEGG."""
+
+import urllib.error
+from dataclasses import dataclass
+from typing import Mapping, Optional
+
+from pyobo import Reference, Term, TypeDef, ensure_path
+from pyobo.struct import from_species
+from pyobo.utils.path import ensure_df, prefix_directory_join
+
+KEGG_GENES_PREFIX = "kegg.genes"
+KEGG_GENOME_PREFIX = "kegg.genome"
+KEGG_PATHWAY_PREFIX = "kegg.pathway"
+
+BASE = "http://rest.kegg.jp"
+SKIP = {
+    "T03333",
+    "T03334",
+    "T03356",
+    "T03357",
+    "T03358",
+    "T03359",
+}
+
+from_kegg_species = TypeDef(
+    reference=Reference.default("inKeggTaxon", "in KEGG taxon"),
+    parents=from_species.reference,
+)
+
+
+@dataclass
+class KEGGGenome:
+    """A data structure for a parsed line of the KEGG Genomes list."""
+
+    identifier: str
+    name: str
+    code: Optional[str]
+    long_code: Optional[str]
+    taxonomy_id: Optional[str]
+
+    def annotate_term(self, term: Term) -> None:
+        """Annotate the term with the species represented by this object."""
+        term.append_relationship(
+            from_kegg_species,
+            self.get_reference(),
+        )
+        if self.taxonomy_id is not None:
+            term.set_species(self.taxonomy_id)
+
+    def get_reference(self) -> Reference:
+        """Get the reference for this genome."""
+        return Reference(
+            prefix="kegg.genome",
+            identifier=self.identifier,
+            name=self.name,
+        )
+
+
+def ensure_list_genomes(version: str) -> str:
+    """Ensure the KEGG Genome file is downloaded."""
+    return ensure_path(
+        KEGG_GENOME_PREFIX,
+        url=f"{BASE}/list/genome",
+        name="genome.tsv",
+        version=version,
+    )
+
+
+def ensure_list_pathways(version: str) -> Mapping[str, str]:
+    """Ensure the KEGG Map (non species specific)."""
+    rv = ensure_df(
+        KEGG_PATHWAY_PREFIX,
+        url=f"{BASE}/list/pathway",
+        name="pathway.tsv",
+        version=version,
+    )
+    return {k[len("path:") :]: v for k, v in rv.values}
+
+
+"""GENOME SPECIFIC"""
+
+
+def ensure_list_genome(kegg_genome_id: str, *, version: str) -> str:
+    """Get the list of genes for the given organism."""
+    return ensure_path(
+        KEGG_GENES_PREFIX,
+        "genes",
+        url=f"{BASE}/list/{kegg_genome_id}",
+        name=f"{kegg_genome_id}.tsv",
+        version=version,
+    )
+
+
+def ensure_conv_genome_uniprot(
+    kegg_genome_id: str, *, version: str, error_on_missing: bool = False
+) -> Optional[str]:
+    """Get the KEGG-UniProt protein map for the given organism."""
+    return _ensure_conv_genome_helper(
+        kegg_genome_id, "uniprot", version=version, error_on_missing=error_on_missing
+    )
+
+
+def ensure_conv_genome_ncbigene(
+    kegg_genome_id: str, *, version: str, error_on_missing: bool = False
+) -> Optional[str]:
+    """Get the KEGG-NCBIGENE protein map for the given organism."""
+    return _ensure_conv_genome_helper(
+        kegg_genome_id, "ncbi-geneid", version=version, error_on_missing=error_on_missing
+    )
+
+
+def _ensure_conv_genome_helper(
+    kegg_genome_id: str,
+    target_database: str,
+    *,
+    version: str,
+    error_on_missing: bool = False,
+) -> Optional[str]:
+    """Get the KEGG-external protein map for the given organism/database."""
+    name = f"{kegg_genome_id}.tsv"
+    try:
+        rv = ensure_path(
+            KEGG_GENES_PREFIX,
+            f"conv_{target_database}",
+            url=f"{BASE}/conv/{target_database}/{kegg_genome_id}",
+            name=name,
+            error_on_missing=error_on_missing,
+            version=version,
+        )
+    except KeyboardInterrupt:
+        pass
+    except urllib.error.HTTPError:
+        rv = prefix_directory_join(
+            KEGG_GENES_PREFIX,
+            f"conv_{target_database}",
+            name=name,
+            version=version,
+        )
+        with rv.open("w") as file:
+            print(file=file)  # noqa:T001
+        return rv.as_posix()
+    except FileNotFoundError:
+        return None
+    else:
+        return rv
+
+
+def ensure_link_pathway_genome(
+    kegg_genome_id: str, *, version: str, error_on_missing: bool = False
+) -> str:
+    """Get the protein-pathway links for the given organism.
+
+    :raises: FileNotFoundError
+    """
+    return ensure_path(
+        KEGG_PATHWAY_PREFIX,
+        "link_pathway",
+        url=f"{BASE}/link/pathway/{kegg_genome_id}",
+        name=f"{kegg_genome_id}.tsv",
+        error_on_missing=error_on_missing,
+        version=version,
+    )
+
+
+def ensure_list_pathway_genome(
+    kegg_genome_id: str, *, version: str, error_on_missing: bool = False
+) -> str:
+    """Get the list of pathways for the given organism.
+
+    :raises: FileNotFoundError
+    """
+    return ensure_path(
+        KEGG_PATHWAY_PREFIX,
+        "pathways",
+        url=f"{BASE}/list/pathway/{kegg_genome_id}",
+        name=f"{kegg_genome_id}.tsv",
+        error_on_missing=error_on_missing,
+        version=version,
+    )
