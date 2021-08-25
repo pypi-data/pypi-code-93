@@ -1,0 +1,35 @@
+from ..input_outputs import WSGI as WSGIInputOutput
+from ..di import StandardDependencies
+from .build_context import build_context
+from .context import Context
+
+
+class WSGI(Context):
+    def __init__(self, di):
+        super().__init__(di)
+
+    def __call__(self, env, start_response):
+        if self.handler is None:
+            raise ValueError("Cannot execute WSGI context without first configuring it")
+
+        return self.handler(WSGIInputOutput(env, start_response))
+
+def wsgi(
+    application,
+    di_class=StandardDependencies,
+    bindings=None,
+    binding_classes=None,
+    binding_modules=None,
+    additional_configs=None,
+    auto_inject_loaded_modules=True,
+):
+    return build_context(
+        WSGI,
+        application,
+        di_class,
+        bindings=bindings,
+        binding_classes=binding_classes,
+        binding_modules=binding_modules,
+        additional_configs=additional_configs,
+        auto_inject_loaded_modules=auto_inject_loaded_modules,
+    )
