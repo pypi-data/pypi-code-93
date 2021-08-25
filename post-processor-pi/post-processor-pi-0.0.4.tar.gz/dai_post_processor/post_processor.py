@@ -1,0 +1,518 @@
+import os
+import json
+import base64
+import cv2
+import re
+import statistics
+from collections import OrderedDict
+
+
+class DocumentClass:
+    def __init__(self, doc_ai, config_dict):
+        # Document AI output
+        self.doc_ai = doc_ai
+
+        # Configuration file
+        self.paragraph_multiplier = config_dict["paragraph_multiplier"]
+        self.header_multiplier = config_dict["header_multiplier"]
+        self.line_threshold = config_dict["line_threshold"]
+        self.line_repeat = config_dict["line_repeat"]
+        self.thr_left = config_dict["thr_left"]
+        self.thr_right = config_dict["thr_right"]
+        self.thr_top = config_dict["thr_top"]
+        self.thr_bottom = config_dict["thr_bottom"]
+        self.main_filter = config_dict["main_filter"]
+        self.lines_output = config_dict["lines_output"]
+        self.paragraph_output = config_dict["paragraph_output"]
+        self.structured_output = config_dict["structured_output"]
+        self.headers_output = config_dict["headers_output"]
+        self.get_nested_filter_1 = config_dict["get_nested_filter_1"]
+        if self.get_nested_filter_1:
+            self.nested_filter_1 = config_dict["nested_filter_1"]
+
+    def create_json(self, file_name="test"):
+
+        def create_lines_features():
+
+            thr_left = self.thr_left
+            thr_right = self.thr_right
+            thr_top = self.thr_top
+            thr_bottom = self.thr_bottom
+
+            row_list = []
+            for json_file in self.doc_ai:
+
+                for page in json_file["pages"]:
+
+                    width = page["image"]["width"]
+
+                    try:
+                        page_list = []
+                        for paragraph in page["lines"]:
+
+                            try:
+                                y_top = paragraph["layout"]["boundingPoly"]["vertices"][0]["y"]
+                                x_left = paragraph["layout"]["boundingPoly"]["vertices"][0]["x"]
+                                y_bottom = paragraph["layout"]["boundingPoly"]["vertices"][2]["y"]
+                                x_right = paragraph["layout"]["boundingPoly"]["vertices"][2]["x"]
+
+                                if (y_top > thr_top) and (x_left > thr_left) and (y_bottom < thr_bottom) and (
+                                        x_right < thr_right):
+
+                                    response = ""
+                                    features_dict = {}
+                                    row = {}
+                                    row["line_features"] = features_dict
+                                    for segment in paragraph["layout"]["textAnchor"]["textSegments"]:
+                                        try:
+                                            int(segment["startIndex"])
+                                        except KeyError:
+                                            start_index = 0
+                                        else:
+                                            start_index = int(segment["startIndex"])
+                                        end_index = int(segment["endIndex"])
+
+                                        response += json_file["text"][start_index:end_index]
+
+                                        response = response.replace("\n", " ")
+                                        response = response.strip()
+
+                                        features_dict["y_top"] = paragraph["layout"]["boundingPoly"]["vertices"][0]["y"]
+                                        features_dict["x_left"] = paragraph["layout"]["boundingPoly"]["vertices"][0]["x"]
+                                        features_dict["y_bottom"] = paragraph["layout"]["boundingPoly"]["vertices"][2]["y"]
+                                        features_dict["x_right"] = paragraph["layout"]["boundingPoly"]["vertices"][2]["x"]
+                                        row["text"] = response
+                                        features_dict["page_num"] = page["pageNumber"]
+                                        page_list.append(row)
+                            except:
+                                pass
+
+                    except:
+                        pass
+
+                    row_list.append(page_list)
+
+            for j in range(self.line_repeat):
+
+                for page in row_list:
+
+                    for i in range(len(page)):
+                        try:
+                            if abs(page[i]["line_features"]["y_top"] - page[i + 1]["line_features"]["y_top"]) < self.line_threshold:
+                                page[i]["text"] = page[i]["text"] + " " + page[i + 1]["text"]
+                                page[i]["line_features"]["x_right"] = page[i + 1]["line_features"]["x_right"]
+                                del page[i + 1]
+                        except:
+                            pass
+
+            for page in row_list:
+
+                for i in range(len(page)):
+
+                    try:
+                        page[i]["line_features"]["gap_left"] = page[i + 1]["line_features"]["x_left"] - page[i]["line_features"]["x_left"]
+                        page[i]["line_features"]["gap_right"] = page[i]["line_features"]["x_right"] - page[i + 1]["line_features"]["x_right"]
+                        page[i]["line_features"]["gap_horizontal"] = page[i]["line_features"]["gap_left"] + page[i]["line_features"]["gap_right"]
+                    except:
+                        pass
+
+                    try:
+                        page[i]["line_features"]["gap_top"] = abs(page[i]["line_features"]["y_top"] - page[i - 1]["line_features"]["y_bottom"])
+                    except:
+                        pass
+
+                    page[i]["line_features"]["gap_right_page"] = width - page[i]["line_features"]["x_right"]
+                    page[i]["line_features"]["gap_page"] = page[i]["line_features"]["gap_right_page"] + page[i]["line_features"]["x_left"]
+                try:
+                    page[0]["line_features"]["gap_top"] = page[0]["line_features"]["y_top"]
+                except:
+                    page[0]["line_features"]["gap_top"] = 0
+
+                page[0]["line_features"]["gap_left"] = 0
+                page[0]["line_features"]["gap_right"] = 0
+                page[0]["line_features"]["gap_horizontal"] = 0
+
+            if self.headers_output:
+                gap = []
+                for page in row_list:
+                    for row in page:
+                        gap.append(row["line_features"]["gap_page"])
+
+                header_thr = statistics.median(gap) * self.header_multiplier
+
+                for page in row_list:
+                    for i in range(len(page)):
+                        if page[i]["line_features"]["gap_page"] > header_thr and (page[i]["line_features"]["x_left"] - 0.05 * page[i]["line_features"]["x_left"]) < \
+                                page[i]["line_features"]["gap_right_page"] < (page[i]["line_features"]["x_left"] + 0.05 * page[i]["line_features"]["x_left"]):
+                            page[i]["type"] = "centered header"
+                        else:
+                            page[i]["type"] = "line"
+
+            return row_list
+
+        def filter_paragraphs(row_list):
+
+            i = 0
+            cor = []
+            id = []
+            for page in row_list:
+                for line in page:
+                    if line["line_features"]["gap_top"] is not None:
+                        cor.append(line["line_features"]["gap_top"])
+                        id.append(i)
+                        i += 1
+
+            median = statistics.median(cor)
+            gap_threshold = median * self.paragraph_multiplier
+
+            paragraph_list = []
+            for page in row_list:
+
+                for i in range(len(page)):
+                    page[i]["id"] = i
+
+                page_iter = iter(page)
+                for line in page_iter:
+                    l = line["id"]
+                    par_features_dict = {}
+                    paragraph_dict = {}
+                    paragraph_dict["par_features"] = par_features_dict
+                    paragraph_text = ""
+                    gap = 0
+                    i = 0
+                    while gap < gap_threshold and i < len(page) - 2:
+                        try:
+                            if self.headers_output == 1:
+                                if page[l + i]["type"] == "line":
+                                    paragraph_text += " " + page[l + i]["text"]
+
+                                    gap = page[l + i + 1]["line_features"]["gap_top"]
+                            else:
+
+                                paragraph_text += " " + page[l + i]["text"]
+
+                                gap = page[l + i + 1]["line_features"]["gap_top"]
+                        except:
+                            pass
+
+                        i += 1
+                    paragraph_dict["text"] = paragraph_text.strip()
+                    paragraph_dict["par_features"]["page_num"] = page[0]["line_features"]["page_num"]
+                    paragraph_dict["par_features"]["gap_top"] = page[l]["line_features"]["gap_top"]
+                    paragraph_dict["par_features"]["x_left"] = page[l]["line_features"]["x_left"]
+                    paragraph_dict["par_features"]["x_right"] = page[l]["line_features"]["x_right"]
+                    paragraph_dict["par_features"]["y_top"] = page[l]["line_features"]["y_top"]
+                    paragraph_list.append(paragraph_dict)
+                    try:
+                        [next(page_iter) for j in range(i - 1)]
+                    except:
+                        pass
+            for i in range(1, len(paragraph_list)):
+                y_top_previous = paragraph_list[i - 1]["par_features"]["y_top"]
+                y_top_current = paragraph_list[i]["par_features"]["y_top"]
+                if y_top_current < y_top_previous:
+                    paragraph_list[i]["par_features"]["gap_left"] = 0
+                    paragraph_list[i]["par_features"]["gap_right"] = 0
+                else:
+                    paragraph_list[i]["par_features"]["gap_left"] = paragraph_list[i - 1]["par_features"]["x_left"] - paragraph_list[i]["par_features"]["x_left"]
+                    paragraph_list[i]["par_features"]["gap_right"] = paragraph_list[i]["par_features"]["x_right"] - paragraph_list[i - 1]["par_features"]["x_right"]
+
+            paragraph_list[0]["par_features"]["gap_left"] = 0
+            paragraph_list[0]["par_features"]["gap_right"] = 0
+
+            return paragraph_list
+
+        def nested_strcuture_1(paragraph_list):
+            nested_output_pattern1 = re.findall(self.nested_filter_1, self.doc_ai[0]["text"])
+            nested_output_pattern1 = [out for out in nested_output_pattern1 if
+                                      len(out.replace("(", "").replace(")", "")) == 1]
+
+            for i in range(len(paragraph_list)):
+                paragraph_list[i]["id"] = i
+
+            paragraph_iter = iter(paragraph_list)
+            paragraph_list_new = []
+            for paragraph in paragraph_iter:
+                l = paragraph["id"]
+                paragraph["nested_structure_1"] = []
+                i = 0
+                while any(string in paragraph_list[l + i]["text"][:10] for string in nested_output_pattern1):
+                    if i != 0:
+                        paragraph["text"] += " " + paragraph_list[l + i]["text"]
+                    section_letter = re.findall(self.nested_filter_1, paragraph_list[l + i]["text"][:10])[0]
+                    nested_structure = {}
+                    nested_structure.update(
+                        {"name": "section_{}".format(section_letter),
+                         "text": "{}".format(paragraph_list[l + i]["text"])})
+                    paragraph["nested_structure_1"].append(nested_structure)
+
+                    i += 1
+
+                paragraph_list_new.append(paragraph)
+
+                try:
+                    [next(paragraph_iter) for j in range(i - 1)]
+                except:
+                    pass
+
+            return paragraph_list_new
+
+        def structure_paragraphs(paragraph_list, output_pattern):
+            for i in range(len(paragraph_list)):
+                paragraph_list[i]["id"] = i
+
+            paragraph_iter = iter(paragraph_list)
+            structured_paragraph_list = []
+            for paragraph in paragraph_iter:
+                nested_paragraph_list_1 = []
+                text = ""
+                if any(string in paragraph["text"][:10] for string in output_pattern):
+                    l = paragraph["id"]
+                    paragraph_text = ""
+
+                    i = 0
+                    while not any(string in text[:10] for string in output_pattern):
+
+                        try:
+                            paragraph_text += " " + paragraph_list[l + i]["text"]
+                            text = paragraph_list[l + i + 1]["text"]
+                            if len(paragraph_list[l + i]["nested_structure_1"]) > 0:
+                                nested_paragraph_list_1 = paragraph_list[l + i]["nested_structure_1"]
+                        except:
+                            break
+
+                        i += 1
+
+                    paragraph_dict = {
+                        "paragraph_number": [ele for ele in output_pattern if (ele in paragraph_text[:10])][0],
+                        "text": paragraph_text.strip(), "nested_structure_1": nested_paragraph_list_1
+                    }
+
+                    structured_paragraph_list.append(paragraph_dict)
+
+            return structured_paragraph_list
+
+        def filtering_function():
+            match = []
+            for json_file in self.doc_ai:
+                match += re.findall(self.main_filter, json_file["text"].replace("\n", " "))
+
+                match = OrderedDict((x, True) for x in match).keys()
+                match = list(match)
+
+            match = [x[:-1].strip() for x in match]
+
+            output_pattern = []
+            for element in match:
+                if element not in output_pattern:
+                    output_pattern.append(element)
+
+            return output_pattern
+
+        output_pattern = filtering_function()
+
+        row_list = create_lines_features()
+
+        paragraph_list = filter_paragraphs(row_list)
+
+        if self.get_nested_filter_1:
+            paragraph_list = nested_strcuture_1(paragraph_list)
+
+        structure_paragraphs_list = structure_paragraphs(paragraph_list, output_pattern)
+
+        output_dict = {}
+        if self.lines_output == 1:
+            output_dict["lines_list"] = row_list
+        if self.paragraph_output == 1:
+            output_dict["paragraph_list"] = paragraph_list
+        if self.structured_output == 1:
+            output_dict["structured_output"] = structure_paragraphs_list
+
+        output = os.path.join("data", "pp_output", "{}.json".format(file_name))
+        if not os.path.exists(os.path.dirname(output)):
+            try:
+                os.makedirs(os.path.dirname(output))
+            except:
+                pass
+
+        with open(output, 'w') as outfile:
+            print("Output JSON written to {}".format(outfile.name))
+            json.dump(output_dict, outfile, ensure_ascii=False)
+
+        return output_dict
+
+    def graphical_evaluation(self, paragraph_multiplier=2):
+
+        def create_lines_features(line_repeat=2, line_threshold=10):
+
+            row_list = []
+            for json_file in self.doc_ai:
+
+                for page in json_file["pages"]:
+
+                    try:
+                        page_list = []
+                        for paragraph in page["lines"]:
+
+                            response = ""
+
+                            row = {}
+                            for segment in paragraph["layout"]["textAnchor"]["textSegments"]:
+                                try:
+                                    int(segment["startIndex"])
+                                except KeyError:
+                                    start_index = 0
+                                else:
+                                    start_index = int(segment["startIndex"])
+                                end_index = int(segment["endIndex"])
+
+                                response += json_file["text"][start_index:end_index]
+
+                                response = response.replace("\n", " ")
+                                response = response.strip()
+                            try:
+                                row["y_top"] = paragraph["layout"]["boundingPoly"]["vertices"][0]["y"]
+                                row["x_left"] = paragraph["layout"]["boundingPoly"]["vertices"][0]["x"]
+                                row["y_bottom"] = paragraph["layout"]["boundingPoly"]["vertices"][2]["y"]
+                                row["x_right"] = paragraph["layout"]["boundingPoly"]["vertices"][2]["x"]
+                                row["text"] = response
+                                row["page_num"] = page["pageNumber"]
+                                page_list.append(row)
+                            except Exception as e:
+                                pass
+
+                    except:
+                        pass
+
+                    row_list.append(page_list)
+
+            for j in range(line_repeat):
+
+                for page in row_list:
+
+                    for i in range(len(page)):
+                        try:
+                            if abs(page[i]["y_top"] - page[i + 1]["y_top"]) < line_threshold:
+                                page[i]["text"] = page[i]["text"] + " " + page[i + 1]["text"]
+                                page[i]["x_right"] = page[i + 1]["x_right"]
+                                del page[i + 1]
+                        except:
+                            pass
+
+            for page in row_list:
+
+                page[0]["gap_top"] = None
+                for i in range(1, len(page)):
+                    try:
+                        page[i]["gap_top"] = abs(page[i]["y_top"] - page[i - 1]["y_bottom"])
+                        page[i]["gap_left"] = abs(page[i]["x_left"] - page[i - 1]["x_left"])
+                        page[i]["gap_right"] = abs(page[i]["x_right"] - page[i - 1]["x_right"])
+                        page[i]["gap_horizontal"] = page[i]["gap_left"] + page[i]["gap_right"]
+                        page[i]["font_size"] = abs(page[i]["y_bottom"] - page[i]["y_top"])
+
+                    except:
+                        pass
+
+            return row_list
+
+        row_list = create_lines_features()
+
+        page_num = 0
+        for file in self.doc_ai:
+
+            for page in file["pages"]:
+
+                image = page["image"]["content"]
+                page_width = page["image"]["width"]
+                filename = os.path.join("data", "various", "input", "page{}.png".format(page_num))
+                if not os.path.exists(os.path.dirname(filename)):
+                    try:
+                        os.makedirs(os.path.dirname(filename))
+                    except:
+                        pass
+
+                with open(filename, "wb") as f:
+                    f.write(base64.b64decode(image))
+
+                page_num += 1
+
+        i = 0
+        cor = []
+        id = []
+        for page in row_list:
+            for line in page:
+                if line["gap_top"] is not None:
+                    cor.append(line["gap_top"])
+                    id.append(i)
+                    i += 1
+
+        median = statistics.median(cor)
+        gap_threshold = median * paragraph_multiplier
+
+        page_num = 0
+        for page in row_list:
+
+            filename = os.path.join("data", "various", "input", "page{}.png".format(page_num))
+            img = cv2.imread(filename)
+
+            for i in range(1, len(page)):
+
+                line_height = int((page[i]["y_top"] + page[i - 1]["y_bottom"]) / 2)
+
+                if page[i]["gap_top"] > gap_threshold:
+                    cv2.line(img, (0, line_height), (page_width, line_height), (0, 255, 0), thickness=2)
+
+            output = os.path.join("data", "various", "output", "page{}.png".format(page_num))
+            if not os.path.exists(os.path.dirname(output)):
+                try:
+                    os.makedirs(os.path.dirname(output))
+                except:
+                    pass
+
+            cv2.imwrite(output, img)
+
+            page_num += 1
+
+
+def open_doc_ai(path, return_title=False):
+
+    def atoi(text):
+        return int(text) if text.isdigit() else text
+
+    def natural_keys(text):
+        return [atoi(c) for c in re.split(r'(\d+)', text)]
+
+    file_list = os.listdir(path)
+    title = file_list[0][24:-7]
+
+    sort_list = sorted(file_list, key=natural_keys)
+
+    doc_ai = []
+    for file in sort_list:
+
+        # If file is a json, construct it's full path and open it, append all json data to list
+        if 'json' in file:
+            json_path = os.path.join(path, file)
+            with open(json_path) as json_file:
+                data = json.load(json_file)
+            doc_ai.append(data)
+
+    if return_title:
+        output = (doc_ai, title)
+    else:
+        output = doc_ai
+
+    return output
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+
+def natural_keys(text):
+    '''
+    alist.sort(key=natural_keys) sorts in human order
+    http://nedbatchelder.com/blog/200712/human_sorting.html
+    (See Toothy's implementation in the comments)
+    '''
+    return [atoi(c) for c in re.split(r'(\d+)', text)]
